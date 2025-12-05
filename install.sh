@@ -5,6 +5,7 @@ OWNER="endrilickollari"
 REPO="debtdrone-cli"
 BINARY_NAME="debtdrone"
 
+
 # 1. Detect OS & Architecture
 OS="$(uname -s)"
 ARCH="$(uname -m)"
