@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Configuration
 OWNER="endrilickollari"
 REPO="debtdrone-cli"
 BINARY_NAME="debtdrone"
@@ -10,66 +9,56 @@ BINARY_NAME="debtdrone"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-# Map OS to GoReleaser format (Title Case: Darwin, Linux)
+# Standardize OS/Arch strings to match common GoReleaser patterns
 case "$OS" in
-    Linux)  PLATFORM="Linux" ;;
-    Darwin) PLATFORM="Darwin" ;;
-    *)
-        echo "❌ Unsupported OS: $OS"
-        exit 1
-        ;;
+    Linux)  OS_KEY="Linux" ;;
+    Darwin) OS_KEY="Darwin" ;;
+    *)      echo "❌ Unsupported OS: $OS"; exit 1 ;;
 esac
 
-# Map Architecture to GoReleaser format (x86_64, arm64)
 case "$ARCH" in
-    x86_64|amd64) ARCH="x86_64" ;;
-    arm64|aarch64) ARCH="arm64" ;;
-    *)
-        echo "❌ Unsupported Architecture: $ARCH"
-        exit 1
-        ;;
+    x86_64|amd64) ARCH_KEY="x86_64" ;;
+    arm64|aarch64) ARCH_KEY="arm64" ;;
+    *)            echo "❌ Unsupported Architecture: $ARCH"; exit 1 ;;
 esac
 
-# 2. Construct the Download URL (Matching your actual release filenames)
-# Format: debtdrone_Darwin_arm64.tar.gz
-ASSET_NAME="${BINARY_NAME}_${PLATFORM}_${ARCH}.tar.gz"
-DOWNLOAD_URL="https://github.com/${OWNER}/${REPO}/releases/latest/download/${ASSET_NAME}"
+echo "🔍 Looking for ${OS_KEY} ${ARCH_KEY} binary..."
 
-echo "🔍 Detected platform: $OS ($ARCH)"
-echo "⬇️  Downloading $ASSET_NAME..."
+# 2. Fetch the latest release data from GitHub API
+# We use the /releases endpoint (not /latest) and take the first one to support Pre-releases
+RELEASE_DATA=$(curl -s "https://api.github.com/repos/${OWNER}/${REPO}/releases")
 
-# Create a temp directory for extraction
-TMP_DIR=$(mktemp -d)
-trap "rm -rf $TMP_DIR" EXIT
+# 3. Find the asset URL that matches our platform
+# We look for a download URL that contains both our OS and Arch keys
+DOWNLOAD_URL=$(echo "$RELEASE_DATA" | grep -o "https://.*release.*${OS_KEY}_${ARCH_KEY}.tar.gz" | head -1)
 
-# 3. Download the archive
-if ! curl -fL -o "$TMP_DIR/$ASSET_NAME" "$DOWNLOAD_URL"; then
-    echo "❌ Download failed. Could not fetch: $DOWNLOAD_URL"
-    echo "Check if a release exists for version: latest"
+if [ -z "$DOWNLOAD_URL" ]; then
+    echo "❌ Could not find a release asset for ${OS_KEY}_${ARCH_KEY}"
+    echo "Available assets might not match the naming convention."
     exit 1
 fi
 
-# 4. Extract the binary
-echo "📦 Extracting..."
-tar -xzf "$TMP_DIR/$ASSET_NAME" -C "$TMP_DIR"
+echo "⬇️  Downloading from: $DOWNLOAD_URL"
 
-# 5. Install to PATH
+# Create temp directory
+TMP_DIR=$(mktemp -d)
+trap "rm -rf $TMP_DIR" EXIT
+
+# 4. Download & Extract
+curl -fL -o "$TMP_DIR/debtdrone.tar.gz" "$DOWNLOAD_URL"
+tar -xzf "$TMP_DIR/debtdrone.tar.gz" -C "$TMP_DIR"
+
+# 5. Install
 INSTALL_DIR="/usr/local/bin"
-TARGET_PATH="$INSTALL_DIR/$BINARY_NAME"
-
 echo "🚀 Installing to $INSTALL_DIR..."
 
-# Check permissions
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMP_DIR/$BINARY_NAME" "$TARGET_PATH"
+    mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/"
 else
-    echo "🔒 Sudo permission required to move binary to $INSTALL_DIR"
-    sudo mv "$TMP_DIR/$BINARY_NAME" "$TARGET_PATH"
+    echo "🔒 Sudo permission required..."
+    sudo mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/"
 fi
 
-# Make executable just in case
-chmod +x "$TARGET_PATH"
+chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
-# 6. Verify
-echo "✅ Installation complete!"
-echo "👉 Run '$BINARY_NAME --help' to get started."
+echo "✅ Installation complete! Run '$BINARY_NAME --help' to start."
