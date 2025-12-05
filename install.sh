@@ -10,59 +10,66 @@ BINARY_NAME="debtdrone"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-# Map OS names to your build naming convention
+# Map OS to GoReleaser format (Title Case: Darwin, Linux)
 case "$OS" in
-    Linux)  PLATFORM="linux" ;;
-    Darwin) PLATFORM="darwin" ;;
+    Linux)  PLATFORM="Linux" ;;
+    Darwin) PLATFORM="Darwin" ;;
     *)
         echo "❌ Unsupported OS: $OS"
-        echo "Please build from source: https://github.com/$OWNER/$REPO"
         exit 1
         ;;
 esac
 
-# Map Architecture names (x86_64 -> amd64, etc.)
+# Map Architecture to GoReleaser format (x86_64, arm64)
 case "$ARCH" in
-    x86_64)  ARCH="amd64" ;;
-    arm64)   ARCH="arm64" ;;
-    aarch64) ARCH="arm64" ;;
+    x86_64|amd64) ARCH="x86_64" ;;
+    arm64|aarch64) ARCH="arm64" ;;
     *)
         echo "❌ Unsupported Architecture: $ARCH"
         exit 1
         ;;
 esac
 
-# 2. Construct the Download URL
-# Note: This assumes you upload binaries named like 'debtdrone-linux-amd64' to Releases
-ASSET_NAME="${BINARY_NAME}-${PLATFORM}-${ARCH}"
+# 2. Construct the Download URL (Matching your actual release filenames)
+# Format: debtdrone_Darwin_arm64.tar.gz
+ASSET_NAME="${BINARY_NAME}_${PLATFORM}_${ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/${OWNER}/${REPO}/releases/latest/download/${ASSET_NAME}"
 
 echo "🔍 Detected platform: $OS ($ARCH)"
-echo "⬇️  Downloading ${BINARY_NAME}..."
+echo "⬇️  Downloading $ASSET_NAME..."
 
-# 3. Download the binary (fails if asset not found)
-if ! curl -fL -o "${BINARY_NAME}" "${DOWNLOAD_URL}"; then
+# Create a temp directory for extraction
+TMP_DIR=$(mktemp -d)
+trap "rm -rf $TMP_DIR" EXIT
+
+# 3. Download the archive
+if ! curl -fL -o "$TMP_DIR/$ASSET_NAME" "$DOWNLOAD_URL"; then
     echo "❌ Download failed. Could not fetch: $DOWNLOAD_URL"
-    echo "Check if a release exists for this version."
+    echo "Check if a release exists for version: latest"
     exit 1
 fi
 
-# 4. Make it executable
-chmod +x "${BINARY_NAME}"
+# 4. Extract the binary
+echo "📦 Extracting..."
+tar -xzf "$TMP_DIR/$ASSET_NAME" -C "$TMP_DIR"
 
-# 5. Install to PATH (handle permissions)
+# 5. Install to PATH
 INSTALL_DIR="/usr/local/bin"
+TARGET_PATH="$INSTALL_DIR/$BINARY_NAME"
 
-echo "📦 Installing to $INSTALL_DIR..."
+echo "🚀 Installing to $INSTALL_DIR..."
 
-# Check if we have write access to /usr/local/bin, otherwise use sudo
+# Check permissions
 if [ -w "$INSTALL_DIR" ]; then
-    mv "${BINARY_NAME}" "$INSTALL_DIR/"
+    mv "$TMP_DIR/$BINARY_NAME" "$TARGET_PATH"
 else
     echo "🔒 Sudo permission required to move binary to $INSTALL_DIR"
-    sudo mv "${BINARY_NAME}" "$INSTALL_DIR/"
+    sudo mv "$TMP_DIR/$BINARY_NAME" "$TARGET_PATH"
 fi
 
-# 6. Verify installation
+# Make executable just in case
+chmod +x "$TARGET_PATH"
+
+# 6. Verify
 echo "✅ Installation complete!"
-echo "🚀 Run '$BINARY_NAME --help' to get started."
+echo "👉 Run '$BINARY_NAME --help' to get started."
