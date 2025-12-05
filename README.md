@@ -6,11 +6,6 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go)](https://go.dev/)
 [![GitHub Release](https://img.shields.io/github/v/release/endrilickollari/debtdrone-cli?label=Latest)](https://github.com/endrilickollari/debtdrone-cli/releases)
 
-<!--> ![Demo GIF](https://via.placeholder.com/800x400.png?text=Demo+Coming+Soon)
->
-> *Scanning a complex repo in <200ms*-->
-
----
 
 ## Why DebtDrone?
 
