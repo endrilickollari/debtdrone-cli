@@ -127,7 +127,9 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 				Metrics: map[string]interface{}{"complexity_metrics_count": len(allMetrics)},
 			}, err
 		}
-		log.Printf("✅ Saved %d complexity metrics to database", len(allMetrics))
+		if ctx.Value("isCLI") != true {
+			log.Printf("✅ Saved %d complexity metrics to database", len(allMetrics))
+		}
 	}
 
 	issues := a.convertToIssues(allMetrics)
