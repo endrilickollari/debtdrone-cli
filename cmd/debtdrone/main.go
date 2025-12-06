@@ -55,6 +55,7 @@ func main() {
 	ctx = context.WithValue(ctx, "analysisRunID", uuid.New())
 	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
 	ctx = context.WithValue(ctx, "userID", uuid.New())
+	ctx = context.WithValue(ctx, "isCLI", true)
 
 	var allIssues []models.TechnicalDebtIssue
 
