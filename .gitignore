@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Build artifacts
+dist/
+bin/
+*.tar.gz
+*.zip
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/

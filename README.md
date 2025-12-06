@@ -50,6 +50,8 @@ If your linter is guessing, you're not measuring debt—you're measuring noise.
 
 ## 📦 Installation
 
+> 💡 **For build instructions and release process**, see [BUILD.md](BUILD.md)
+
 ### One-Line Install (Mac & Linux)
 
 The fastest way to get started. This script automatically detects your OS and architecture, downloads the latest release, and installs it to your path.
@@ -122,7 +124,13 @@ This repository serves as the **public distribution channel** for DebtDrone CLI.
 - 💡 Feature requests
 - 📖 Documentation improvements
 
-Open an issue to get started.
+**Read our [Contributing Guide](CONTRIBUTING.md)** to get started.
+
+### Quick Links
+
+- 📖 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
+- 🔨 [Build Guide](BUILD.md) - Build system and release process
+- 📋 [Issues](https://github.com/endrilickollari/debtdrone-cli/issues) - Report bugs or request features
 
 ---
 
