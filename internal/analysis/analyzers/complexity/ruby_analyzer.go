@@ -1,39 +1,42 @@
 package complexity
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
 	"github.com/google/uuid"
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/ruby"
 )
 
-// RubyAnalyzer analyzes Ruby code for complexity metrics
 type RubyAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewRubyAnalyzer creates a new Ruby complexity analyzer
 func NewRubyAnalyzer(thresholds models.ComplexityThresholds) *RubyAnalyzer {
 	return &RubyAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *RubyAnalyzer) Language() string {
 	return "Ruby"
 }
 
-// AnalyzeFile analyzes a Ruby file and returns complexity metrics
 func (a *RubyAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
-	code := string(content)
 	var metrics []models.ComplexityMetric
 
-	functions := findRubyMethods(code)
+	functions, err := findRubyMethods(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ruby methods: %w", err)
+	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateRubyCyclomatic(fn.body)
+		cyclomatic := calculateRubyCyclomatic(fn.node, content)
+
 		cognitive := calculateRubyCognitive(fn.body)
 		nesting := calculateRubyNesting(fn.body)
 		loc := strings.Count(fn.body, "\n") + 1
@@ -50,7 +53,7 @@ func (a *RubyAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 			FilePath:               filePath,
 			FunctionName:           fn.name,
 			StartLine:              fn.line,
-			EndLine:                fn.line + strings.Count(fn.body, "\n"),
+			EndLine:                fn.endLine,
 			CyclomaticComplexity:   cyclomatic,
 			CognitiveComplexity:    &cognitivePtr,
 			NestingDepth:           nesting,
@@ -68,120 +71,167 @@ func (a *RubyAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	return metrics, nil
 }
 
-// findRubyMethods finds method definitions in Ruby code
-func findRubyMethods(code string) []functionInfo {
-	var functions []functionInfo
-	lines := strings.Split(code, "\n")
+type rubyFunctionInfo struct {
+	name       string
+	line       int
+	endLine    int
+	body       string
+	paramCount int
+	node       *sitter.Node
+}
 
-	funcPattern := regexp.MustCompile(`^\s*def\s+(?:self\.)?(\w+[!?]?)\s*(\(.*?\))?`)
+func findRubyMethods(content []byte) ([]rubyFunctionInfo, error) {
+	parser := sitter.NewParser()
+	parser.SetLanguage(ruby.GetLanguage())
 
-	for i, line := range lines {
-		if matches := funcPattern.FindStringSubmatch(line); len(matches) > 1 {
-			funcName := matches[1]
-			paramCount := 0
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
 
-			if len(matches) > 2 && matches[2] != "" {
-				params := strings.Trim(matches[2], "()")
-				paramCount = countRubyParameters(params)
+	queryStr := `
+		(method
+			name: (identifier) @name
+			parameters: (method_parameters)? @params
+			body: (_)? @body
+		) @method
+
+		(singleton_method
+			object: (_)
+			name: (identifier) @name
+			parameters: (method_parameters)? @params
+			body: (_)? @body
+		) @method
+	`
+
+	q, err := sitter.NewQuery([]byte(queryStr), ruby.GetLanguage())
+	if err != nil {
+		return nil, err
+	}
+
+	qc := sitter.NewQueryCursor()
+	qc.Exec(q, tree.RootNode())
+
+	var functions []rubyFunctionInfo
+
+	for {
+		m, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+
+		var fnName string
+		var fnBodyNode *sitter.Node
+		var fnNode *sitter.Node
+		var paramNode *sitter.Node
+
+		for _, c := range m.Captures {
+			captureName := q.CaptureNameForId(c.Index)
+			switch captureName {
+			case "method":
+				fnNode = c.Node
+			case "name":
+				fnName = c.Node.Content(content)
+			case "params":
+				paramNode = c.Node
+			case "body":
+				fnBodyNode = c.Node
 			}
-			body := extractRubyMethodBody(lines, i)
+		}
 
-			functions = append(functions, functionInfo{
-				name:       funcName,
-				line:       i + 1,
-				endLine:    i + 1 + strings.Count(body, "\n"),
-				body:       body,
+		if fnNode != nil && fnName != "" {
+			bodyContent := ""
+			if fnBodyNode != nil {
+				bodyContent = fnNode.Content(content)
+			} else {
+				bodyContent = fnNode.Content(content)
+			}
+
+			paramCount := countRubyParameters(paramNode)
+
+			functions = append(functions, rubyFunctionInfo{
+				name:       fnName,
+				line:       int(fnNode.StartPoint().Row) + 1,
+				endLine:    int(fnNode.EndPoint().Row) + 1,
+				body:       bodyContent,
 				paramCount: paramCount,
+				node:       fnNode,
 			})
 		}
 	}
 
-	return functions
+	return functions, nil
 }
 
-// extractRubyMethodBody extracts the body of a Ruby method
-func extractRubyMethodBody(lines []string, startLine int) string {
-	var body []string
-	defLine := lines[startLine]
-
-	body = append(body, defLine)
-
-	endCount := 0
-	defCount := 1
-
-	for i := startLine + 1; i < len(lines); i++ {
-		line := lines[i]
-
-		body = append(body, line)
-
-		if regexp.MustCompile(`^\s*(def|class|module|if|unless|case|while|until|for|begin)\b`).MatchString(line) {
-			defCount++
-		}
-		if regexp.MustCompile(`^\s*end\b`).MatchString(line) {
-			endCount++
-			if endCount >= defCount {
-				break
-			}
-		}
-	}
-
-	return strings.Join(body, "\n")
-}
-
-// countRubyParameters counts parameters in a Ruby parameter list
-func countRubyParameters(params string) int {
-	if strings.TrimSpace(params) == "" {
+func countRubyParameters(paramNode *sitter.Node) int {
+	if paramNode == nil {
 		return 0
 	}
-
-	params = regexp.MustCompile(`=\s*[^,]+`).ReplaceAllString(params, "")
-	params = regexp.MustCompile(`&\w+`).ReplaceAllString(params, "")
-
-	parts := strings.Split(params, ",")
 	count := 0
-	for _, part := range parts {
-		if strings.TrimSpace(part) != "" {
-			count++
+	for i := 0; i < int(paramNode.ChildCount()); i++ {
+		child := paramNode.Child(i)
+		if child.Type() == "(" || child.Type() == ")" || child.Type() == "," {
+			continue
 		}
+		count++
 	}
-
 	return count
 }
 
-// calculateRubyCyclomatic calculates cyclomatic complexity for Ruby code
-func calculateRubyCyclomatic(code string) int {
+// calculateRubyCyclomatic calculates cyclomatic complexity for Ruby code using AST
+func calculateRubyCyclomatic(node *sitter.Node, content []byte) int {
 	complexity := 1
+	cursor := sitter.NewTreeCursor(node)
+	defer cursor.Close()
 
-	patterns := []string{
-		`\bif\b`,     // if statement
-		`\bunless\b`, // unless statement
-		`\belsif\b`,  // elsif
-		`\bwhen\b`,   // case when
-		`\brescue\b`, // exception handling
-		`\bwhile\b`,  // while loop
-		`\buntil\b`,  // until loop
-		`\bfor\b`,    // for loop
-		`\.each\b`,   // .each iterator
-		`\.map\b`,    // .map iterator
-		`\.select\b`, // .select iterator
-		`\.reject\b`, // .reject iterator
-		`&&`,         // logical AND
-		`\|\|`,       // logical OR
-		`\band\b`,    // logical and
-		`\bor\b`,     // logical or
-		`\?`,         // ternary operator
-	}
+	for {
+		n := cursor.CurrentNode()
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		complexity += len(matches)
+		if n.IsNamed() {
+			nodeType := n.Type()
+			switch nodeType {
+			case "if", "if_modifier", "unless", "unless_modifier", "elsif":
+				complexity++
+			case "while", "while_modifier", "until", "until_modifier", "for":
+				complexity++
+			case "when":
+				complexity++
+			case "rescue":
+				complexity++
+			case "conditional":
+				complexity++
+			case "binary":
+				for i := 0; i < int(n.ChildCount()); i++ {
+					child := n.Child(i)
+					op := child.Content(content)
+					switch op {
+					case "&&", "||", "and", "or":
+						complexity++
+					}
+				}
+			case "block", "do_block", "brace_block":
+				complexity++
+			}
+		}
+
+		if cursor.GoToFirstChild() {
+			continue
+		}
+		if cursor.GoToNextSibling() {
+			continue
+		}
+		for cursor.GoToParent() {
+			if cursor.GoToNextSibling() {
+				goto NextSibling
+			}
+		}
+		break
+	NextSibling:
 	}
 
 	return complexity
 }
 
-// calculateRubyCognitive calculates cognitive complexity for Ruby code
 func calculateRubyCognitive(code string) int {
 	cognitive := 0
 
@@ -205,7 +255,6 @@ func calculateRubyCognitive(code string) int {
 	return cognitive
 }
 
-// calculateRubyNesting estimates maximum nesting depth for Ruby code
 func calculateRubyNesting(code string) int {
 	maxDepth := 0
 	currentDepth := 0
@@ -244,7 +293,6 @@ func calculateRubyNesting(code string) int {
 	return maxDepth
 }
 
-// generateRubyRefactoringSuggestions generates refactoring suggestions for Ruby methods
 func generateRubyRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {
 	var suggestions []models.RefactoringSuggestion
 
@@ -291,7 +339,6 @@ func generateRubyRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCou
 	return suggestions
 }
 
-// estimateTechnicalDebt estimates technical debt in minutes
 func estimateTechnicalDebt(cyclomatic, cognitive, loc int) int {
 	baseMinutes := 5
 

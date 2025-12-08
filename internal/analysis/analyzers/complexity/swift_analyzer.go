@@ -1,39 +1,41 @@
 package complexity
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
 	"github.com/google/uuid"
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/swift"
 )
 
-// SwiftAnalyzer analyzes Swift code for complexity metrics
 type SwiftAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewSwiftAnalyzer creates a new Swift complexity analyzer
 func NewSwiftAnalyzer(thresholds models.ComplexityThresholds) *SwiftAnalyzer {
 	return &SwiftAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *SwiftAnalyzer) Language() string {
 	return "Swift"
 }
-
-// AnalyzeFile analyzes a Swift file and returns complexity metrics
 func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
-	code := string(content)
 	var metrics []models.ComplexityMetric
 
-	functions := findSwiftFunctions(code)
+	functions, err := findSwiftFunctions(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse swift functions: %w", err)
+	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateSwiftCyclomatic(fn.body)
+		cyclomatic := calculateSwiftCyclomatic(fn.node, content)
+
 		cognitive := calculateSwiftCognitive(fn.body)
 		nesting := calculatePatternBasedNesting(fn.body)
 		loc := strings.Count(fn.body, "\n") + 1
@@ -50,7 +52,7 @@ func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.C
 			FilePath:               filePath,
 			FunctionName:           fn.name,
 			StartLine:              fn.line,
-			EndLine:                fn.line + strings.Count(fn.body, "\n"),
+			EndLine:                fn.endLine,
 			CyclomaticComplexity:   cyclomatic,
 			CognitiveComplexity:    &cognitivePtr,
 			NestingDepth:           nesting,
@@ -68,111 +70,194 @@ func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.C
 	return metrics, nil
 }
 
-func findSwiftFunctions(code string) []functionInfo {
-	var functions []functionInfo
-	lines := strings.Split(code, "\n")
+type swiftFunctionInfo struct {
+	name       string
+	line       int
+	endLine    int
+	body       string
+	paramCount int
+	node       *sitter.Node
+}
 
-	funcPattern := regexp.MustCompile(`^\s*(?:@\w+\s+)*(?:(?:public|private|internal|fileprivate|open)\s+)?(?:static\s+)?(?:class\s+)?(?:override\s+)?(?:mutating\s+)?(?:func\s+(\w+)|init)\s*(?:<[^>]+>)?\s*(\([^)]*\))`)
+func findSwiftFunctions(content []byte) ([]swiftFunctionInfo, error) {
+	parser := sitter.NewParser()
+	parser.SetLanguage(swift.GetLanguage())
 
-	for i, line := range lines {
-		if matches := funcPattern.FindStringSubmatch(line); len(matches) > 0 {
-			funcName := "init"
-			if len(matches) > 1 && matches[1] != "" {
-				funcName = matches[1]
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+
+	queryStr := `
+		(function_declaration
+			name: (simple_identifier) @name
+			body: (_) @body
+		) @function
+
+		(init_declaration
+			body: (_) @body
+		) @init
+
+		(deinit_declaration
+			body: (_) @body
+		) @deinit
+	`
+
+	q, err := sitter.NewQuery([]byte(queryStr), swift.GetLanguage())
+	if err != nil {
+		return nil, err
+	}
+	defer q.Close()
+
+	qc := sitter.NewQueryCursor()
+	defer qc.Close()
+	qc.Exec(q, tree.RootNode())
+
+	var functions []swiftFunctionInfo
+
+	for {
+		m, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+
+		var fnName string
+		var fnBodyNode *sitter.Node
+		var fnNode *sitter.Node
+
+		for _, c := range m.Captures {
+			captureName := q.CaptureNameForId(c.Index)
+			switch captureName {
+			case "function":
+				fnNode = c.Node
+			case "init":
+				fnNode = c.Node
+				fnName = "init"
+			case "deinit":
+				fnNode = c.Node
+				fnName = "deinit"
+			case "name":
+				fnName = c.Node.Content(content)
+			case "body":
+				fnBodyNode = c.Node
 			}
-			paramCount := 0
+		}
 
-			if len(matches) > 2 && matches[2] != "" {
-				params := strings.Trim(matches[2], "()")
-				paramCount = countSwiftParameters(params)
+		if fnNode != nil && fnBodyNode != nil {
+			if fnName == "" {
+				if fnNode.Type() == "init_declaration" {
+					fnName = "init"
+				} else if fnNode.Type() == "deinit_declaration" {
+					fnName = "deinit"
+				}
 			}
 
-			body := extractFunctionBody(lines, i, 500)
+			paramCount := countSwiftParametersManual(fnNode)
 
-			if strings.Count(body, "\n") < 1 {
-				continue
-			}
-
-			functions = append(functions, functionInfo{
-				name:       funcName,
-				line:       i + 1,
-				endLine:    i + 1 + strings.Count(body, "\n"),
-				body:       body,
+			functions = append(functions, swiftFunctionInfo{
+				name:       fnName,
+				line:       int(fnNode.StartPoint().Row) + 1,
+				endLine:    int(fnNode.EndPoint().Row) + 1,
+				body:       fnBodyNode.Content(content),
 				paramCount: paramCount,
+				node:       fnNode,
 			})
 		}
 	}
 
-	return functions
+	return functions, nil
 }
 
-// countSwiftParameters counts parameters in a Swift parameter list
-func countSwiftParameters(params string) int {
-	if strings.TrimSpace(params) == "" {
-		return 0
-	}
-
-	params = regexp.MustCompile(`=\s*[^,)]+`).ReplaceAllString(params, "")
-
-	depth := 0
+func countSwiftParametersManual(fnNode *sitter.Node) int {
 	count := 0
-	lastSplit := 0
 
-	for i, char := range params {
-		if char == '<' || char == '(' || char == '{' || char == '[' {
-			depth++
-		} else if char == '>' || char == ')' || char == '}' || char == ']' {
-			depth--
-		} else if char == ',' && depth == 0 {
-			if strings.TrimSpace(params[lastSplit:i]) != "" {
-				count++
+	for i := 0; i < int(fnNode.ChildCount()); i++ {
+		child := fnNode.Child(i)
+
+		if child.Type() == "parameter" {
+			count++
+		} else if strings.Contains(child.Type(), "parameter_clause") {
+			count += countParamsInClause(child)
+		} else if strings.Contains(child.Type(), "signature") {
+			for j := 0; j < int(child.ChildCount()); j++ {
+				subChild := child.Child(j)
+				if strings.Contains(subChild.Type(), "parameter_clause") {
+					count += countParamsInClause(subChild)
+				} else if subChild.Type() == "parameter" {
+					count++
+				}
 			}
-			lastSplit = i + 1
 		}
 	}
-
-	if strings.TrimSpace(params[lastSplit:]) != "" {
-		count++
-	}
-
 	return count
 }
 
-// calculateSwiftCyclomatic calculates cyclomatic complexity for Swift code
-func calculateSwiftCyclomatic(code string) int {
-	complexity := 1
-
-	patterns := []string{
-		`\bif\b`,         // if statement
-		`\belse\s+if\b`,  // else if
-		`\bguard\b`,      // guard statement
-		`\bswitch\b`,     // switch statement
-		`\bcase\b`,       // switch case
-		`\bwhile\b`,      // while loop
-		`\bfor\b`,        // for loop
-		`\brepeat\b`,     // repeat-while loop
-		`\bcatch\b`,      // catch block
-		`&&`,             // logical AND
-		`\|\|`,           // logical OR
-		`\?\?`,           // nil coalescing operator
-		`\?\.`,           // optional chaining
-		`\btry\?`,        // optional try
-		`\.map\b`,        // map (functional)
-		`\.filter\b`,     // filter
-		`\.compactMap\b`, // compactMap
-		`\.flatMap\b`,    // flatMap
+func countParamsInClause(node *sitter.Node) int {
+	c := 0
+	for i := 0; i < int(node.ChildCount()); i++ {
+		child := node.Child(i)
+		if child.Type() == "parameter" {
+			c++
+		}
 	}
+	return c
+}
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		complexity += len(matches)
+func calculateSwiftCyclomatic(node *sitter.Node, content []byte) int {
+	complexity := 1
+	cursor := sitter.NewTreeCursor(node)
+	defer cursor.Close()
+
+	for {
+		n := cursor.CurrentNode()
+
+		if n.IsNamed() {
+			nodeType := n.Type()
+
+			switch nodeType {
+			case "if_statement":
+				complexity++
+			case "guard_statement":
+				complexity++
+			case "for_statement":
+				complexity++
+			case "while_statement", "repeat_while_statement":
+				complexity++
+			case "switch_entry":
+				complexity++
+			case "catch_clause":
+				complexity++
+			case "conjunction_expression":
+				complexity++
+			case "disjunction_expression":
+				complexity++
+			case "ternary_expression":
+				complexity++
+			case "nil_coalescing_expression":
+				complexity++
+			case "optional_chaining_expression":
+				complexity++
+			}
+		}
+
+		if cursor.GoToFirstChild() {
+			continue
+		}
+		if cursor.GoToNextSibling() {
+			continue
+		}
+		for cursor.GoToParent() {
+			if cursor.GoToNextSibling() {
+				goto NextSibling
+			}
+		}
+		break
+	NextSibling:
 	}
 
 	return complexity
 }
 
-// calculateSwiftCognitive calculates cognitive complexity for Swift code
 func calculateSwiftCognitive(code string) int {
 	cognitive := 0
 
@@ -202,7 +287,6 @@ func calculateSwiftCognitive(code string) int {
 	return cognitive
 }
 
-// generateSwiftRefactoringSuggestions generates refactoring suggestions for Swift functions
 func generateSwiftRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {
 	var suggestions []models.RefactoringSuggestion
 

@@ -1,11 +1,14 @@
 package complexity
 
 import (
+	"context"
 	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
 	"github.com/google/uuid"
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/cpp"
 )
 
 // CCppAnalyzer analyzes C/C++ code for complexity metrics
@@ -27,38 +30,44 @@ func (a *CCppAnalyzer) Language() string {
 
 // AnalyzeFile analyzes a C/C++ file and returns complexity metrics
 func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
-	code := string(content)
 	var metrics []models.ComplexityMetric
 
-	// Remove comments first to avoid false positives
-	code = removeComments(code)
+	ctx := context.Background()
+	parser := sitter.NewParser()
+	parser.SetLanguage(cpp.GetLanguage())
 
-	// Find all C/C++ function definitions
-	functions := findCCppFunctions(code)
+	tree, err := parser.ParseCtx(ctx, nil, content)
+	if err != nil {
+		return nil, err
+	}
+
+	root := tree.RootNode()
+	functions := findCCppFunctions(root, content)
 
 	for _, fn := range functions {
-		cyclomatic := calculateCCppCyclomatic(fn.body)
-		cognitive := calculateCCppCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
-		loc := strings.Count(fn.body, "\n") + 1
+		cyclomatic := calculateCCppCyclomatic(fn.Node, content)
+
+		cognitive := calculateCCppCognitive(fn.BodyContent)
+		nesting := calculatePatternBasedNesting(fn.BodyContent)
+		loc := strings.Count(fn.BodyContent, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 		debtMinutes := estimateCCppTechnicalDebt(cyclomatic, cognitive, loc)
-		suggestions := generateCCppRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.paramCount, loc)
+		suggestions := generateCCppRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.ParamCount, loc)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		snippetStr := truncateSnippet(fn.BodyContent, 300)
 
 		metric := models.ComplexityMetric{
 			ID:                     uuid.New(),
 			FilePath:               filePath,
-			FunctionName:           fn.name,
-			StartLine:              fn.line,
-			EndLine:                fn.line + strings.Count(fn.body, "\n"),
+			FunctionName:           fn.Name,
+			StartLine:              int(fn.Node.StartPoint().Row) + 1,
+			EndLine:                int(fn.Node.EndPoint().Row) + 1,
 			CyclomaticComplexity:   cyclomatic,
 			CognitiveComplexity:    &cognitivePtr,
 			NestingDepth:           nesting,
-			ParameterCount:         fn.paramCount,
+			ParameterCount:         fn.ParamCount,
 			LinesOfCode:            loc,
 			Severity:               severity,
 			TechnicalDebtMinutes:   debtMinutes,
@@ -72,133 +81,133 @@ func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	return metrics, nil
 }
 
-// removeComments removes C/C++ style comments to avoid false positives
-func removeComments(code string) string {
-	// Remove multi-line comments /* ... */
-	multiLineComment := regexp.MustCompile(`/\*[\s\S]*?\*/`)
-	code = multiLineComment.ReplaceAllString(code, "")
-
-	// Remove single-line comments //
-	singleLineComment := regexp.MustCompile(`//.*`)
-	code = singleLineComment.ReplaceAllString(code, "")
-
-	return code
+type cCppFunctionInfo struct {
+	Name        string
+	Node        *sitter.Node
+	BodyContent string
+	ParamCount  int
 }
 
-// findCCppFunctions finds function definitions in C/C++ code
-func findCCppFunctions(code string) []functionInfo {
-	var functions []functionInfo
-	lines := strings.Split(code, "\n")
+// findCCppFunctions finds function definitions using Tree-sitter
+func findCCppFunctions(root *sitter.Node, content []byte) []cCppFunctionInfo {
+	var functions []cCppFunctionInfo
 
-	funcPattern := regexp.MustCompile(`^\s*(?:template\s*<[^>]*>\s*)?(?:(?:inline|static|virtual|explicit|extern|friend)\s+)*(?:(?:const|unsigned|signed|long|short)\s+)*(?:\w+(?:::\w+)*(?:\s*<[^>]*>)?)\s*[\*&]*\s+(\w+)\s*\(([^)]*)\)\s*(?:const\s*)?(?:override\s*)?(?:noexcept\s*)?(?:\{|$)`)
+	queryStr := `(function_definition declarator: (_) @declarator body: (_) @body)`
+	q, _ := sitter.NewQuery([]byte(queryStr), cpp.GetLanguage())
+	qc := sitter.NewQueryCursor()
+	defer qc.Close()
+	defer q.Close()
 
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+	qc.Exec(q, root)
+
+	for {
+		match, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+
+		var declaratorNode, bodyNode *sitter.Node
+
+		for _, c := range match.Captures {
+			name := q.CaptureNameForId(c.Index)
+			if name == "declarator" {
+				declaratorNode = c.Node
+			} else if name == "body" {
+				bodyNode = c.Node
+			}
+		}
+
+		if declaratorNode == nil || bodyNode == nil {
 			continue
 		}
 
-		if matches := funcPattern.FindStringSubmatch(line); len(matches) > 1 {
-			funcName := matches[1]
-
-			if isKeyword(funcName) {
-				continue
-			}
-
-			paramCount := 0
-
-			if len(matches) > 2 && matches[2] != "" {
-				paramCount = countCCppParameters(matches[2])
-			}
-			body := extractFunctionBody(lines, i, 1000)
-
-			if strings.Count(body, "\n") < 2 || !strings.Contains(body, "{") {
-				continue
-			}
-
-			functions = append(functions, functionInfo{
-				name:       funcName,
-				line:       i + 1,
-				endLine:    i + 1 + strings.Count(body, "\n"),
-				body:       body,
-				paramCount: paramCount,
-			})
-		}
+		functions = append(functions, cCppFunctionInfo{
+			Name:        extractFunctionName(declaratorNode, content),
+			Node:        bodyNode,
+			BodyContent: bodyNode.Content(content),
+			ParamCount:  countCCppParameters(declaratorNode),
+		})
 	}
 
 	return functions
 }
 
-func isKeyword(name string) bool {
-	keywords := []string{
-		"if", "else", "while", "for", "switch", "case", "default",
-		"return", "break", "continue", "goto", "do", "try", "catch",
-		"throw", "class", "struct", "enum", "union", "namespace",
-		"template", "typename", "typedef", "using", "public", "private",
-		"protected", "virtual", "override", "final", "static", "const",
-		"volatile", "inline", "extern", "register", "auto", "mutable",
-	}
-
-	for _, keyword := range keywords {
-		if name == keyword {
-			return true
+func extractFunctionName(declarator *sitter.Node, content []byte) string {
+	curr := declarator
+	for {
+		t := curr.Type()
+		if t == "identifier" || t == "field_identifier" || t == "destructor_name" || t == "operator_name" {
+			return curr.Content(content)
 		}
+		if t == "qualified_identifier" {
+			return curr.Content(content)
+		}
+
+		child := curr.ChildByFieldName("declarator")
+		if child != nil {
+			curr = child
+			continue
+		}
+
+		found := false
+		for i := 0; i < int(curr.NamedChildCount()); i++ {
+			c := curr.NamedChild(i)
+			if strings.Contains(c.Type(), "declarator") || c.Type() == "identifier" {
+				curr = c
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		break
 	}
-	return false
+	return "unknown_function"
 }
 
-func countCCppParameters(params string) int {
-	params = strings.TrimSpace(params)
-
-	if params == "" || params == "void" {
-		return 0
-	}
-	params = regexp.MustCompile(`=\s*[^,)]+`).ReplaceAllString(params, "")
-
-	depth := 0
+func countCCppParameters(declarator *sitter.Node) int {
 	count := 0
-	lastSplit := 0
-
-	for i, char := range params {
-		if char == '<' || char == '(' {
-			depth++
-		} else if char == '>' || char == ')' {
-			depth--
-		} else if char == ',' && depth == 0 {
-			if strings.TrimSpace(params[lastSplit:i]) != "" {
-				count++
-			}
-			lastSplit = i + 1
+	var visit func(*sitter.Node)
+	visit = func(n *sitter.Node) {
+		if n.Type() == "parameter_declaration" {
+			count++
+		}
+		for i := 0; i < int(n.NamedChildCount()); i++ {
+			visit(n.NamedChild(i))
 		}
 	}
-
-	if strings.TrimSpace(params[lastSplit:]) != "" {
-		count++
-	}
-
+	visit(declarator)
 	return count
 }
 
-func calculateCCppCyclomatic(code string) int {
+func calculateCCppCyclomatic(body *sitter.Node, content []byte) int {
 	complexity := 1
 
-	patterns := []string{
-		`\bif\b`,        // if statement
-		`\belse\s+if\b`, // else if
-		`\bwhile\b`,     // while loop
-		`\bfor\b`,       // for loop
-		`\bdo\b`,        // do-while loop
-		`\bcase\b`,      // switch case
-		`\bcatch\b`,     // exception handling
-		`&&`,            // logical AND
-		`\|\|`,          // logical OR
-		`\?`,            // ternary operator
-		`\bgoto\b`,      // goto statement (adds complexity)
+	var visit func(*sitter.Node)
+	visit = func(n *sitter.Node) {
+		t := n.Type()
+		switch t {
+		case "if_statement", "while_statement", "for_statement", "range_based_for_statement",
+			"do_statement", "case_statement", "catch_clause", "conditional_expression":
+			complexity++
+		case "binary_expression":
+			op := n.ChildByFieldName("operator")
+			if op != nil {
+				opStr := op.Content(content)
+				if opStr == "&&" || opStr == "||" {
+					complexity++
+				}
+			}
+		}
+
+		for i := 0; i < int(n.NamedChildCount()); i++ {
+			visit(n.NamedChild(i))
+		}
 	}
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		complexity += len(matches)
+	if body != nil {
+		visit(body)
 	}
 
 	return complexity
