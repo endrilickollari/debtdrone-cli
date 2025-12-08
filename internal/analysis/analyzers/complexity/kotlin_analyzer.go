@@ -1,39 +1,41 @@
 package complexity
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
 	"github.com/google/uuid"
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/kotlin"
 )
 
-// KotlinAnalyzer analyzes Kotlin code for complexity metrics
 type KotlinAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewKotlinAnalyzer creates a new Kotlin complexity analyzer
 func NewKotlinAnalyzer(thresholds models.ComplexityThresholds) *KotlinAnalyzer {
 	return &KotlinAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *KotlinAnalyzer) Language() string {
 	return "Kotlin"
 }
-
-// AnalyzeFile analyzes a Kotlin file and returns complexity metrics
 func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
-	code := string(content)
 	var metrics []models.ComplexityMetric
 
-	functions := findKotlinFunctions(code)
+	functions, err := findKotlinFunctions(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse kotlin functions: %w", err)
+	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateKotlinCyclomatic(fn.body)
+		cyclomatic := calculateKotlinCyclomatic(fn.node, content)
+
 		cognitive := calculateKotlinCognitive(fn.body)
 		nesting := calculatePatternBasedNesting(fn.body)
 		loc := strings.Count(fn.body, "\n") + 1
@@ -50,7 +52,7 @@ func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 			FilePath:               filePath,
 			FunctionName:           fn.name,
 			StartLine:              fn.line,
-			EndLine:                fn.line + strings.Count(fn.body, "\n"),
+			EndLine:                fn.endLine,
 			CyclomaticComplexity:   cyclomatic,
 			CognitiveComplexity:    &cognitivePtr,
 			NestingDepth:           nesting,
@@ -68,106 +70,161 @@ func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	return metrics, nil
 }
 
-// findKotlinFunctions finds function definitions in Kotlin code
-func findKotlinFunctions(code string) []functionInfo {
-	var functions []functionInfo
-	lines := strings.Split(code, "\n")
+type kotlinFunctionInfo struct {
+	name       string
+	line       int
+	endLine    int
+	body       string
+	paramCount int
+	node       *sitter.Node
+}
 
-	funcPattern := regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal)\s+)?(?:suspend\s+)?(?:inline\s+)?(?:infix\s+)?(?:operator\s+)?fun\s+(?:<[^>]+>\s+)?(?:\w+\.)?(\w+)\s*(\([^)]*\))`)
+func findKotlinFunctions(content []byte) ([]kotlinFunctionInfo, error) {
+	parser := sitter.NewParser()
+	parser.SetLanguage(kotlin.GetLanguage())
 
-	for i, line := range lines {
-		if matches := funcPattern.FindStringSubmatch(line); len(matches) > 1 {
-			funcName := matches[1]
-			paramCount := 0
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
 
-			if len(matches) > 2 && matches[2] != "" {
-				params := strings.Trim(matches[2], "()")
-				paramCount = countKotlinParameters(params)
+	queryStr := `
+		(function_declaration
+			(simple_identifier) @name
+			(function_body) @body
+		) @function
+	`
+
+	q, err := sitter.NewQuery([]byte(queryStr), kotlin.GetLanguage())
+	if err != nil {
+		return nil, err
+	}
+
+	qc := sitter.NewQueryCursor()
+	qc.Exec(q, tree.RootNode())
+
+	var functions []kotlinFunctionInfo
+
+	for {
+		m, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+
+		var fnName string
+		var fnBodyNode *sitter.Node
+		var fnNode *sitter.Node
+		var paramCount int
+
+		for _, c := range m.Captures {
+			captureName := q.CaptureNameForId(c.Index)
+			switch captureName {
+			case "function":
+				fnNode = c.Node
+			case "name":
+				fnName = c.Node.Content(content)
+			case "body":
+				fnBodyNode = c.Node
 			}
-			body := extractFunctionBody(lines, i, 500)
+		}
 
-			if strings.Count(body, "\n") < 1 {
-				continue
-			}
+		if fnNode != nil && fnName != "" && fnBodyNode != nil {
+			paramCount = countKotlinParameters(fnNode)
 
-			functions = append(functions, functionInfo{
-				name:       funcName,
-				line:       i + 1,
-				endLine:    i + 1 + strings.Count(body, "\n"),
-				body:       body,
+			functions = append(functions, kotlinFunctionInfo{
+				name:       fnName,
+				line:       int(fnNode.StartPoint().Row) + 1,
+				endLine:    int(fnNode.EndPoint().Row) + 1,
+				body:       fnBodyNode.Content(content),
 				paramCount: paramCount,
+				node:       fnNode,
 			})
 		}
 	}
 
-	return functions
+	return functions, nil
 }
 
-// countKotlinParameters counts parameters in a Kotlin parameter list
-func countKotlinParameters(params string) int {
-	if strings.TrimSpace(params) == "" {
-		return 0
-	}
-
-	params = regexp.MustCompile(`=\s*[^,)]+`).ReplaceAllString(params, "")
-
-	depth := 0
+func countKotlinParameters(fnNode *sitter.Node) int {
 	count := 0
-	lastSplit := 0
-
-	for i, char := range params {
-		if char == '<' || char == '(' || char == '{' {
-			depth++
-		} else if char == '>' || char == ')' || char == '}' {
-			depth--
-		} else if char == ',' && depth == 0 {
-			if strings.TrimSpace(params[lastSplit:i]) != "" {
-				count++
+	for i := 0; i < int(fnNode.ChildCount()); i++ {
+		child := fnNode.Child(i)
+		if child.Type() == "function_value_parameters" {
+			for j := 0; j < int(child.ChildCount()); j++ {
+				grandChild := child.Child(j)
+				if grandChild.Type() == "parameter" || grandChild.Type() == "class_parameter" {
+					count++
+				}
 			}
-			lastSplit = i + 1
+			break
 		}
 	}
-
-	if strings.TrimSpace(params[lastSplit:]) != "" {
-		count++
-	}
-
 	return count
 }
 
-// calculateKotlinCyclomatic calculates cyclomatic complexity for Kotlin code
-func calculateKotlinCyclomatic(code string) int {
+func calculateKotlinCyclomatic(node *sitter.Node, content []byte) int {
 	complexity := 1
+	cursor := sitter.NewTreeCursor(node)
+	defer cursor.Close()
 
-	patterns := []string{
-		`\bif\b`,         // if statement
-		`\belse\s+if\b`,  // else if
-		`\bwhen\b`,       // when expression (similar to switch)
-		`\bwhile\b`,      // while loop
-		`\bfor\b`,        // for loop
-		`\bcatch\b`,      // catch block
-		`&&`,             // logical AND
-		`\|\|`,           // logical OR
-		`\?:`,            // Elvis operator
-		`\?\.`,           // Safe call operator
-		`!!`,             // Not-null assertion (adds risk)
-		`\.let\b`,        // let scope function
-		`\.also\b`,       // also scope function
-		`\.takeIf\b`,     // takeIf
-		`\.takeUnless\b`, // takeUnless
-		`->`,             // lambda or when branch
-	}
+	for {
+		n := cursor.CurrentNode()
+		nodeType := n.Type()
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		complexity += len(matches)
+		switch nodeType {
+		case "if_expression", "for_statement", "while_statement", "do_while_statement", "catch_block", "when_expression":
+			complexity++
+		case "when_entry":
+			complexity++
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				text := child.Content(content)
+				if text == "&&" || text == "||" {
+					complexity++
+				}
+			}
+		case "call_expression":
+			text := n.Content(content)
+			if strings.Contains(text, ".let") || strings.Contains(text, ".run") || strings.Contains(text, ".apply") || strings.Contains(text, ".also") {
+				complexity++
+			}
+		case "navigation_expression", "safe_navigation_expression":
+			complexity++
+			if nodeType == "safe_navigation_expression" {
+				complexity++
+			} else if nodeType == "navigation_expression" {
+				for i := 0; i < int(n.ChildCount()); i++ {
+					if n.Child(i).Type() == "safe_navigation_operator" {
+						complexity++
+						break
+					}
+				}
+			}
+		case "elvis_expression":
+			complexity++
+		case "lambda_literal":
+			complexity++
+		}
+
+		if cursor.GoToFirstChild() {
+			continue
+		}
+		if cursor.GoToNextSibling() {
+			continue
+		}
+		for cursor.GoToParent() {
+			if cursor.GoToNextSibling() {
+				goto NextSibling
+			}
+		}
+		break
+	NextSibling:
 	}
 
 	return complexity
 }
 
-// calculateKotlinCognitive calculates cognitive complexity for Kotlin code
 func calculateKotlinCognitive(code string) int {
 	cognitive := 0
 
@@ -196,7 +253,26 @@ func calculateKotlinCognitive(code string) int {
 	return cognitive
 }
 
-// generateKotlinRefactoringSuggestions generates refactoring suggestions for Kotlin functions
+func estimateKotlinTechnicalDebt(cyclomatic, cognitive, loc int) int {
+	baseMinutes := 5
+
+	complexityMinutes := (cyclomatic - 10) * 2
+	if complexityMinutes < 0 {
+		complexityMinutes = 0
+	}
+
+	cognitiveMinutes := (cognitive - 15) * 1
+	if cognitiveMinutes < 0 {
+		cognitiveMinutes = 0
+	}
+	locMinutes := (loc - 30) / 5
+	if locMinutes < 0 {
+		locMinutes = 0
+	}
+
+	return baseMinutes + complexityMinutes + cognitiveMinutes + locMinutes
+}
+
 func generateKotlinRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {
 	var suggestions []models.RefactoringSuggestion
 
@@ -241,25 +317,4 @@ func generateKotlinRefactoringSuggestions(cyclomatic, cognitive, nesting, paramC
 	}
 
 	return suggestions
-}
-
-// estimateKotlinTechnicalDebt estimates technical debt in minutes for Kotlin code
-func estimateKotlinTechnicalDebt(cyclomatic, cognitive, loc int) int {
-	baseMinutes := 5
-
-	complexityMinutes := (cyclomatic - 10) * 2
-	if complexityMinutes < 0 {
-		complexityMinutes = 0
-	}
-
-	cognitiveMinutes := (cognitive - 15) * 1
-	if cognitiveMinutes < 0 {
-		cognitiveMinutes = 0
-	}
-	locMinutes := (loc - 30) / 5
-	if locMinutes < 0 {
-		locMinutes = 0
-	}
-
-	return baseMinutes + complexityMinutes + cognitiveMinutes + locMinutes
 }

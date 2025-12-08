@@ -1,39 +1,40 @@
 package complexity
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
 	"github.com/google/uuid"
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/rust"
 )
 
-// RustAnalyzer analyzes Rust code for complexity metrics
 type RustAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewRustAnalyzer creates a new Rust complexity analyzer
 func NewRustAnalyzer(thresholds models.ComplexityThresholds) *RustAnalyzer {
 	return &RustAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *RustAnalyzer) Language() string {
 	return "Rust"
 }
-
-// AnalyzeFile analyzes a Rust file and returns complexity metrics
 func (a *RustAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
-	code := string(content)
 	var metrics []models.ComplexityMetric
 
-	functions := findRustFunctions(code)
+	functions, err := findRustFunctions(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rust functions: %w", err)
+	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateRustCyclomatic(fn.body)
+		cyclomatic := calculateRustCyclomatic(fn.node, content)
 		cognitive := calculateRustCognitive(fn.body)
 		nesting := calculateRustNesting(fn.body)
 		loc := strings.Count(fn.body, "\n") + 1
@@ -50,7 +51,7 @@ func (a *RustAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 			FilePath:               filePath,
 			FunctionName:           fn.name,
 			StartLine:              fn.line,
-			EndLine:                fn.line + strings.Count(fn.body, "\n"),
+			EndLine:                fn.endLine,
 			CyclomaticComplexity:   cyclomatic,
 			CognitiveComplexity:    &cognitivePtr,
 			NestingDepth:           nesting,
@@ -68,144 +69,151 @@ func (a *RustAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	return metrics, nil
 }
 
-// findRustFunctions finds function definitions in Rust code
-func findRustFunctions(code string) []functionInfo {
-	var functions []functionInfo
-	lines := strings.Split(code, "\n")
+type rustFunctionInfo struct {
+	name       string
+	line       int
+	endLine    int
+	body       string
+	paramCount int
+	node       *sitter.Node
+}
 
-	funcPattern := regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?(?:const\s+)?fn\s+(\w+)\s*(?:<[^>]*>)?\s*\(([^)]*)\)`)
+func findRustFunctions(content []byte) ([]rustFunctionInfo, error) {
+	parser := sitter.NewParser()
+	parser.SetLanguage(rust.GetLanguage())
 
-	for i, line := range lines {
-		if matches := funcPattern.FindStringSubmatch(line); len(matches) > 1 {
-			funcName := matches[1]
-			paramCount := 0
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
 
-			if len(matches) > 2 && matches[2] != "" {
-				paramCount = countRustParameters(matches[2])
+	queryStr := `
+		(function_item
+			name: (identifier) @name
+			parameters: (parameters)? @params
+			body: (block) @body
+		) @function
+	`
+
+	q, err := sitter.NewQuery([]byte(queryStr), rust.GetLanguage())
+	if err != nil {
+		return nil, err
+	}
+
+	qc := sitter.NewQueryCursor()
+	qc.Exec(q, tree.RootNode())
+
+	var functions []rustFunctionInfo
+
+	for {
+		m, ok := qc.NextMatch()
+		if !ok {
+			break
+		}
+
+		var fnName string
+		var fnBodyNode *sitter.Node
+		var fnNode *sitter.Node
+		var paramNode *sitter.Node
+
+		for _, c := range m.Captures {
+			captureName := q.CaptureNameForId(c.Index)
+			switch captureName {
+			case "function":
+				fnNode = c.Node
+			case "name":
+				fnName = c.Node.Content(content)
+			case "params":
+				paramNode = c.Node
+			case "body":
+				fnBodyNode = c.Node
 			}
-			body := extractRustFunctionBody(lines, i)
+		}
 
-			if strings.Count(body, "\n") < 2 {
-				continue
-			}
+		if fnNode != nil && fnName != "" && fnBodyNode != nil {
+			paramCount := countRustParameters(paramNode)
 
-			functions = append(functions, functionInfo{
-				name:       funcName,
-				line:       i + 1,
-				endLine:    i + 1 + strings.Count(body, "\n"),
-				body:       body,
+			functions = append(functions, rustFunctionInfo{
+				name:       fnName,
+				line:       int(fnNode.StartPoint().Row) + 1,
+				endLine:    int(fnNode.EndPoint().Row) + 1,
+				body:       fnBodyNode.Content(content),
 				paramCount: paramCount,
+				node:       fnNode,
 			})
 		}
 	}
 
-	return functions
+	return functions, nil
 }
 
-// extractRustFunctionBody extracts the body of a Rust function
-func extractRustFunctionBody(lines []string, startLine int) string {
-	var body []string
-	body = append(body, lines[startLine])
-
-	braceCount := 0
-	foundOpenBrace := false
-
-	for i := startLine; i < len(lines); i++ {
-		line := lines[i]
-
-		for _, char := range line {
-			switch char {
-			case '{':
-				braceCount++
-				foundOpenBrace = true
-			case '}':
-				braceCount--
-			}
-		}
-
-		if i > startLine {
-			body = append(body, line)
-		}
-
-		if foundOpenBrace && braceCount == 0 {
-			break
-		}
-		if i == startLine && strings.TrimSpace(line)[len(strings.TrimSpace(line))-1] == ';' {
-			break
-		}
-	}
-
-	return strings.Join(body, "\n")
-}
-
-func countRustParameters(params string) int {
-	if strings.TrimSpace(params) == "" {
+func countRustParameters(paramNode *sitter.Node) int {
+	if paramNode == nil {
 		return 0
 	}
-	params = regexp.MustCompile(`\b(?:&mut\s+)?self\b,?\s*`).ReplaceAllString(params, "")
-	if strings.TrimSpace(params) == "" {
-		return 0
-	}
-	depth := 0
 	count := 0
-	lastSplit := 0
-	hasParam := false
-
-	for i, char := range params {
-		if char == '<' || char == '(' {
-			depth++
-		} else if char == '>' || char == ')' {
-			depth--
-		} else if char == ',' && depth == 0 {
-			if strings.TrimSpace(params[lastSplit:i]) != "" {
-				count++
-			}
-			lastSplit = i + 1
-			hasParam = false
-		} else if !hasParam && char != ' ' && char != '\t' && char != '\n' {
-			hasParam = true
+	for i := 0; i < int(paramNode.ChildCount()); i++ {
+		child := paramNode.Child(i)
+		if child.Type() == "parameter" {
+			count++
 		}
 	}
-
-	if strings.TrimSpace(params[lastSplit:]) != "" {
-		count++
-	}
-
 	return count
 }
 
-// calculateRustCyclomatic calculates cyclomatic complexity for Rust code
-func calculateRustCyclomatic(code string) int {
+func calculateRustCyclomatic(node *sitter.Node, content []byte) int {
 	complexity := 1
+	cursor := sitter.NewTreeCursor(node)
+	defer cursor.Close()
 
-	patterns := []string{
-		`\bif\b`,        // if statement
-		`\belse\s+if\b`, // else if
-		`\bmatch\b`,     // match expression
-		`\bwhile\b`,     // while loop
-		`\bfor\b`,       // for loop
-		`\bloop\b`,      // infinite loop
-		`=>`,            // match arm
-		`&&`,            // logical AND
-		`\|\|`,          // logical OR
-		`\?`,            // ? operator (error propagation)
-		`\.unwrap_or\b`, // unwrap_or
-		`\.and_then\b`,  // and_then combinator
-		`\.or_else\b`,   // or_else combinator
-		`\.map\b`,       // map (functional)
-		`\.filter\b`,    // filter
-	}
+	for {
+		n := cursor.CurrentNode()
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		complexity += len(matches)
+		if n.IsNamed() {
+			nodeType := n.Type()
+			switch nodeType {
+			case "if_expression":
+				complexity++
+			case "match_expression":
+				complexity++
+			case "match_arm":
+				complexity++
+			case "while_expression", "for_expression", "loop_expression":
+				complexity++
+			case "binary_expression":
+				for i := 0; i < int(n.ChildCount()); i++ {
+					child := n.Child(i)
+					op := child.Content(content)
+					switch op {
+					case "&&", "||":
+						complexity++
+					}
+				}
+			case "try_expression":
+				complexity++
+			case "or_pattern":
+				complexity++
+			}
+		}
+
+		if cursor.GoToFirstChild() {
+			continue
+		}
+		if cursor.GoToNextSibling() {
+			continue
+		}
+		for cursor.GoToParent() {
+			if cursor.GoToNextSibling() {
+				goto NextSibling
+			}
+		}
+		break
+	NextSibling:
 	}
 
 	return complexity
 }
 
-// calculateRustCognitive calculates cognitive complexity for Rust code
 func calculateRustCognitive(code string) int {
 	cognitive := 0
 
@@ -234,7 +242,6 @@ func calculateRustCognitive(code string) int {
 	return cognitive
 }
 
-// calculateRustNesting estimates maximum nesting depth for Rust code
 func calculateRustNesting(code string) int {
 	maxDepth := 0
 	currentDepth := 0
@@ -257,7 +264,6 @@ func calculateRustNesting(code string) int {
 	return maxDepth
 }
 
-// generateRustRefactoringSuggestions generates refactoring suggestions for Rust functions
 func generateRustRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {
 	var suggestions []models.RefactoringSuggestion
 
