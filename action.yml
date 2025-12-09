@@ -1,0 +1,31 @@
+name: "DebtDrone Analysis"
+description: "Stop counting lines. Start fixing debt. Analyze technical debt using AST parsing."
+author: "Endri Lickollari"
+branding:
+  icon: "activity"
+  color: "blue"
+
+inputs:
+  path:
+    description: "Path to the repository to analyze"
+    required: false
+    default: "."
+  fail-on:
+    description: "Fail exit code if issues found with severity >= (low, medium, high, critical, none)"
+    required: false
+    default: "high"
+  output:
+    description: "Output format (text, json)"
+    required: false
+    default: "text"
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  args:
+    - --path
+    - ${{ inputs.path }}
+    - --fail-on
+    - ${{ inputs.fail-on }}
+    - --output
+    - ${{ inputs.output }}
