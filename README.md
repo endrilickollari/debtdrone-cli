@@ -57,18 +57,22 @@ If your linter is guessing, you're not measuring debt—you're measuring noise.
 The fastest way to get started. This script automatically detects your OS and architecture, downloads the latest release, and installs it to your path.
 
 ```bash
-curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
+```
+
+### One-Line Install (Windows PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.ps1 | iex
 ```
 
 ### Manual Download
 
 You can download pre-compiled binaries for macOS and Linux directly from the [Releases Page](https://github.com/endrilickollari/debtdrone-cli/releases).
 
-1. Download the `.tar.gz` archive for your platform.
+1. Download the `.tar.gz` (Mac/Linux) or `.zip` (Windows) archive for your platform.
 2. Extract the binary.
-3. Move it to your system `PATH` (e.g., `/usr/local/bin`).
-
-> **Note:** Windows support is coming soon!
+3. Move it to your system `PATH` (e.g., `/usr/local/bin` for \*nix, or `$env:LOCALAPPDATA` for Windows).
 
 ---
 
