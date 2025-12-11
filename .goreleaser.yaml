@@ -8,14 +8,18 @@ builds:
     binary: debtdrone
     env:
       - CGO_ENABLED=1
-      - CC={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang{{ else }}oa64-clang{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-gcc{{ else }}aarch64-linux-gnu-gcc{{ end }}{{ end }}
-      - CXX={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang++{{ else }}oa64-clang++{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-g++{{ else }}aarch64-linux-gnu-g++{{ end }}{{ end }}
+      - CC={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang{{ else }}oa64-clang{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-gcc{{ else }}aarch64-linux-gnu-gcc{{ end }}{{ else if eq .Os "windows" }}x86_64-w64-mingw32-gcc{{ end }}
+      - CXX={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang++{{ else }}oa64-clang++{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-g++{{ else }}aarch64-linux-gnu-g++{{ end }}{{ else if eq .Os "windows" }}x86_64-w64-mingw32-g++{{ end }}
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -30,6 +34,9 @@ archives:
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64{{ else if eq .Arch "386" }}i386{{ else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
     files:
       - LICENSE
       - README.md
@@ -43,7 +50,7 @@ snapshot:
 
 changelog:
   sort: asc
-  use: github
+  use: git
   filters:
     exclude:
       - "^docs:"
