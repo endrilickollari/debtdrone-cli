@@ -11,6 +11,7 @@ This document explains how to build, test, and release DebtDrone CLI.
 ## Architecture
 
 DebtDrone CLI uses **CGO** for Tree-sitter integration, which requires:
+
 - Native C/C++ compilation
 - Cross-compilation toolchains for different platforms
 - Docker-based builds for consistency
@@ -20,13 +21,8 @@ DebtDrone CLI uses **CGO** for Tree-sitter integration, which requires:
 ### Local Development Build
 
 ```bash
-# Build for your current platform
 make build
-
-# Run tests
 make test
-
-# Clean artifacts
 make clean
 ```
 
@@ -35,10 +31,7 @@ The binary will be created in `dist/debtdrone`.
 ### Test Cross-Platform Build
 
 ```bash
-# Create snapshot release (all platforms)
 make snapshot
-
-# Check artifacts
 ls -la dist/
 ```
 
@@ -51,6 +44,7 @@ This uses Docker to simulate the full CI/CD pipeline locally.
 Handles cross-platform compilation and release creation.
 
 **Key Configuration:**
+
 - **Entry Point**: `./cmd/debtdrone`
 - **Binary Name**: `debtdrone`
 - **CGO**: Enabled with platform-specific compilers
@@ -58,6 +52,7 @@ Handles cross-platform compilation and release creation.
 - **Archive Format**: `debtdrone_Darwin_arm64.tar.gz`
 
 **Cross-Compilers:**
+
 - macOS AMD64: `o64-clang`
 - macOS ARM64: `oa64-clang`
 - Linux AMD64: `x86_64-linux-gnu-gcc`
@@ -67,14 +62,14 @@ Handles cross-platform compilation and release creation.
 
 Provides convenient build commands:
 
-| Command | Description |
-|---------|-------------|
-| `make build` | Build locally (current platform only) |
-| `make test` | Run test suite |
-| `make clean` | Remove build artifacts |
-| `make snapshot` | Full cross-platform build (no release) |
-| `make install` | Install binary to `/usr/local/bin` |
-| `make uninstall` | Remove installed binary |
+| Command          | Description                            |
+| ---------------- | -------------------------------------- |
+| `make build`     | Build locally (current platform only)  |
+| `make test`      | Run test suite                         |
+| `make clean`     | Remove build artifacts                 |
+| `make snapshot`  | Full cross-platform build (no release) |
+| `make install`   | Install binary to `/usr/local/bin`     |
+| `make uninstall` | Remove installed binary                |
 
 ### 3. GitHub Actions (`.github/workflows/release.yml`)
 
@@ -83,6 +78,7 @@ Automates releases when you push a version tag.
 **Trigger**: `git push origin v0.1.0`
 
 **Process:**
+
 1. Checkout code with full history
 2. Login to GitHub Container Registry
 3. Run GoReleaser in Docker
@@ -95,29 +91,17 @@ Automates releases when you push a version tag.
 ### Step 1: Test Locally
 
 ```bash
-# Ensure code is clean
 git status
-
-# Run tests
 make test
-
-# Test cross-compilation
 make snapshot
-
-# Verify artifacts
 ls dist/
 ```
 
 ### Step 2: Create Version Tag
 
 ```bash
-# Determine version (follow semantic versioning)
 VERSION=v0.2.0
-
-# Create annotated tag
 git tag -a $VERSION -m "Release $VERSION"
-
-# Push tag to GitHub
 git push origin $VERSION
 ```
 
@@ -140,10 +124,14 @@ git push origin $VERSION
 ### Step 5: Test Installation
 
 ```bash
-# Test the install script
-curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/install.sh | bash
+./installation_scripts/install.sh
+.\installation_scripts\install.ps1
+```
 
-# Verify installation
+### Step 5: Test Installation
+
+```bash
+curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
 debtdrone --version
 ```
 
@@ -156,6 +144,7 @@ debtdrone --version
 ```
 
 Examples:
+
 - `debtdrone_Linux_x86_64.tar.gz`
 - `debtdrone_Darwin_arm64.tar.gz`
 
@@ -166,27 +155,17 @@ The `.goreleaser.yaml` configuration ensures this format is maintained.
 ### Build Fails Locally
 
 ```bash
-# Check Go version
-go version  # Should be 1.21+
-
-# Update dependencies
+go version
 go mod tidy
 go mod download
-
-# Try building manually
 go build -o dist/debtdrone ./cmd/debtdrone
 ```
 
 ### Docker Build Fails
 
 ```bash
-# Check Docker is running
 docker ps
-
-# Pull the build image manually
 docker pull ghcr.io/goreleaser/goreleaser-cross:v1.23.2
-
-# Check disk space
 df -h
 ```
 
@@ -199,8 +178,8 @@ df -h
 3. **Tag Format**: Must match `v*` pattern (e.g., `v0.1.0`)
 
 **Debug:**
+
 ```bash
-# Test GoReleaser config locally
 docker run --rm -v $PWD:/code -w /code \
   ghcr.io/goreleaser/goreleaser-cross:v1.23.2 \
   check
@@ -220,12 +199,14 @@ If `install.sh` can't find binaries:
 Tree-sitter requires native compilation, which is why we use CGO.
 
 **Implications:**
+
 - Build times are longer (~5-10 min)
 - Must use Docker for cross-compilation
 - Cannot use `go install` directly
 - Binaries are platform-specific
 
 **Benefits:**
+
 - Zero false positives (true AST parsing)
 - Multi-language support
 - Fast runtime performance
@@ -244,17 +225,10 @@ We follow [Semantic Versioning](https://semver.org/):
 Before tagging a release:
 
 ```bash
-# 1. Run full test suite
 make test
-
-# 2. Build snapshot
 make snapshot
-
-# 3. Test each platform binary
 ./dist/debtdrone_linux_amd64/debtdrone --version
 ./dist/debtdrone_darwin_arm64/debtdrone --version
-
-# 4. Verify install script logic
 ./install.sh
 ```
 
@@ -263,16 +237,8 @@ make snapshot
 If a release has issues:
 
 ```bash
-# Delete the tag locally
 git tag -d v0.2.0
-
-# Delete the tag on GitHub
 git push origin :refs/tags/v0.2.0
-
-# Delete the GitHub Release manually
-# (Go to Releases page and delete)
-
-# Fix the issue, then re-release
 git tag -a v0.2.0 -m "Release v0.2.0 (fixed)"
 git push origin v0.2.0
 ```
