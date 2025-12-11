@@ -138,4 +138,8 @@ This repository serves as the **public distribution channel** for DebtDrone CLI.
 
 ---
 
+<div align="center">
+
 **Built with ❤️.**
+
+</div>
