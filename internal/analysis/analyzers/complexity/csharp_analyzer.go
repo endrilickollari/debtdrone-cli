@@ -41,8 +41,8 @@ func (a *CSharpAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 
 	for _, fn := range functions {
 		cyclomatic := calculateCSharpCyclomatic(fn.Node, content)
-		cognitive := calculatePatternBasedCognitive(fn.BodyContent)
-		nesting := calculatePatternBasedNesting(fn.BodyContent)
+		cognitive := calculateCSharpCognitive(fn.Node, content)
+		nesting := calculateCSharpNesting(fn.Node)
 		loc := strings.Count(fn.BodyContent, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -176,4 +176,53 @@ func calculateCSharpCyclomatic(node *sitter.Node, content []byte) int {
 
 	visit(node)
 	return complexity
+}
+
+func calculateCSharpCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "case_switch_label", "catch_clause":
+			complexity += 2
+		case "binary_expression":
+			op := n.ChildByFieldName("operator")
+			if op != nil {
+				opStr := op.Content(content)
+				if opStr == "&&" || opStr == "||" || opStr == "??" {
+					complexity += 1
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculateCSharpNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.NamedChildCount()); i++ {
+			visit(n.NamedChild(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return maxDepth
 }

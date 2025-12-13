@@ -35,8 +35,8 @@ func (a *JavaAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	for _, fn := range functions {
 		cyclomatic := calculateJavaCyclomatic(fn.node, content)
 
-		cognitive := calculatePatternBasedCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cognitive := calculateJavaCognitive(fn.node, content)
+		nesting := calculateJavaNesting(fn.node)
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
@@ -213,4 +213,55 @@ func calculateJavaCyclomatic(node *sitter.Node, content []byte) int {
 	}
 
 	return complexity
+}
+
+func calculateJavaCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_statement", "for_statement", "enhanced_for_statement",
+			"while_statement", "do_statement", "switch_label", "catch_clause":
+			complexity += 2
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				childContent := child.Content(content)
+				if childContent == "&&" || childContent == "||" {
+					complexity += 1
+					break
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculateJavaNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "enhanced_for_statement", "while_statement", "do_statement", "switch_expression", "switch_statement", "catch_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return maxDepth
 }

@@ -3,7 +3,6 @@ package complexity
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
@@ -37,8 +36,8 @@ func (a *RubyAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	for _, fn := range functions {
 		cyclomatic := calculateRubyCyclomatic(fn.node, content)
 
-		cognitive := calculateRubyCognitive(fn.body)
-		nesting := calculateRubyNesting(fn.body)
+		cognitive := calculateRubyCognitive(fn.node, content)
+		nesting := calculateRubyNesting(fn.node)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -178,7 +177,6 @@ func countRubyParameters(paramNode *sitter.Node) int {
 	return count
 }
 
-// calculateRubyCyclomatic calculates cyclomatic complexity for Ruby code using AST
 func calculateRubyCyclomatic(node *sitter.Node, content []byte) int {
 	complexity := 1
 	cursor := sitter.NewTreeCursor(node)
@@ -232,64 +230,53 @@ func calculateRubyCyclomatic(node *sitter.Node, content []byte) int {
 	return complexity
 }
 
-func calculateRubyCognitive(code string) int {
-	cognitive := 0
+func calculateRubyCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
 
-	nestingPatterns := []string{
-		`\bif\b`, `\bunless\b`, `\bcase\b`, `\bwhile\b`, `\buntil\b`,
-		`\bfor\b`, `\bbegin\b`, `\.each\b`, `\.map\b`,
-	}
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if", "unless", "case", "while", "until", "for", "rescue":
+			complexity += 2
+		case "binary":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				op := child.Content(content)
+				switch op {
+				case "&&", "||", "and", "or":
+					complexity += 1
+				}
+			}
+		}
+	})
 
-	for _, pattern := range nestingPatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		cognitive += len(matches) * 2
-	}
-
-	logicalOps := regexp.MustCompile(`\b&&\b|\b\|\|\b|\band\b|\bor\b`)
-	cognitive += len(logicalOps.FindAllString(code, -1))
-
-	rescuePattern := regexp.MustCompile(`\brescue\b`)
-	cognitive += len(rescuePattern.FindAllString(code, -1)) * 2
-
-	return cognitive
+	return complexity
 }
 
-func calculateRubyNesting(code string) int {
+func calculateRubyNesting(node *sitter.Node) int {
 	maxDepth := 0
-	currentDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
 
-	lines := strings.Split(code, "\n")
-	for _, line := range lines {
-		if regexp.MustCompile(`^\s*(if|unless|case|while|until|for|begin|def|class|module)\b`).MatchString(line) {
-			currentDepth++
-			if currentDepth > maxDepth {
-				maxDepth = currentDepth
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if", "unless", "case", "while", "until", "for", "rescue", "begin":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
 			}
 		}
 
-		if regexp.MustCompile(`\bdo\b|\{\s*\|`).MatchString(line) {
-			currentDepth++
-			if currentDepth > maxDepth {
-				maxDepth = currentDepth
-			}
-		}
-
-		if regexp.MustCompile(`^\s*end\b`).MatchString(line) {
-			currentDepth--
-			if currentDepth < 0 {
-				currentDepth = 0
-			}
-		}
-
-		if regexp.MustCompile(`^\s*\}`).MatchString(line) {
-			currentDepth--
-			if currentDepth < 0 {
-				currentDepth = 0
-			}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
 		}
 	}
 
+	visit(node, 0)
 	return maxDepth
 }
 

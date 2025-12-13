@@ -8,33 +8,29 @@ import (
 	"github.com/google/uuid"
 )
 
-// JavaScriptAnalyzer analyzes JavaScript/JSX code for complexity metrics
 type JavaScriptAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewJavaScriptAnalyzer creates a new JavaScript complexity analyzer
 func NewJavaScriptAnalyzer(thresholds models.ComplexityThresholds) *JavaScriptAnalyzer {
 	return &JavaScriptAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *JavaScriptAnalyzer) Language() string {
 	return "JavaScript"
 }
 
-// AnalyzeFile analyzes a JavaScript file and returns complexity metrics
 func (a *JavaScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
 	functions := findJavaScriptFunctions(content)
 
 	for _, fn := range functions {
-		cyclomatic := calculatePatternBasedCyclomatic(fn.body)
-		cognitive := calculatePatternBasedCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cyclomatic := calculateJSCyclomatic(fn.Node, content)
+		cognitive := calculateJSCognitive(fn.Node, content)
+		nesting := calculateJSNesting(fn.Node)
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
@@ -61,7 +57,6 @@ func (a *JavaScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 	return metrics, nil
 }
 
-// findJavaScriptFunctions finds function declarations in JavaScript/TypeScript code using Tree-sitter
 func findJavaScriptFunctions(content []byte) []functionInfo {
 	var functions []functionInfo
 
@@ -81,7 +76,6 @@ func findJavaScriptFunctions(content []byte) []functionInfo {
 	return functions
 }
 
-// traverseForJSFunctions recursively traverses the AST to find function definitions
 func traverseForJSFunctions(node *sitter.Node, content []byte, functions *[]functionInfo) {
 	if node == nil {
 		return
@@ -118,13 +112,13 @@ func traverseForJSFunctions(node *sitter.Node, content []byte, functions *[]func
 	}
 }
 
-// extractJSFunctionDeclaration extracts function information from a function_declaration node
 func extractJSFunctionDeclaration(node *sitter.Node, content []byte) functionInfo {
 	var fn functionInfo
 
 	fn.line = int(node.StartPoint().Row) + 1
 	fn.endLine = int(node.EndPoint().Row) + 1
 	fn.body = node.Content(content)
+	fn.Node = node
 
 	for i := 0; i < int(node.ChildCount()); i++ {
 		child := node.Child(i)
@@ -140,13 +134,13 @@ func extractJSFunctionDeclaration(node *sitter.Node, content []byte) functionInf
 	return fn
 }
 
-// extractJSFunction extracts function information from an anonymous function node
 func extractJSFunction(node *sitter.Node, content []byte) functionInfo {
 	var fn functionInfo
 
 	fn.line = int(node.StartPoint().Row) + 1
 	fn.endLine = int(node.EndPoint().Row) + 1
 	fn.body = node.Content(content)
+	fn.Node = node
 
 	parent := node.Parent()
 	if parent != nil && parent.Type() == "variable_declarator" {
@@ -170,13 +164,13 @@ func extractJSFunction(node *sitter.Node, content []byte) functionInfo {
 	return fn
 }
 
-// extractJSArrowFunction extracts function information from an arrow_function node
 func extractJSArrowFunction(node *sitter.Node, content []byte) functionInfo {
 	var fn functionInfo
 
 	fn.line = int(node.StartPoint().Row) + 1
 	fn.endLine = int(node.EndPoint().Row) + 1
 	fn.body = node.Content(content)
+	fn.Node = node
 
 	parent := node.Parent()
 	if parent != nil {
@@ -228,13 +222,13 @@ func extractJSArrowFunction(node *sitter.Node, content []byte) functionInfo {
 	return fn
 }
 
-// extractJSMethodDefinition extracts function information from a method_definition node
 func extractJSMethodDefinition(node *sitter.Node, content []byte) functionInfo {
 	var fn functionInfo
 
 	fn.line = int(node.StartPoint().Row) + 1
 	fn.endLine = int(node.EndPoint().Row) + 1
 	fn.body = node.Content(content)
+	fn.Node = node
 
 	for i := 0; i < int(node.ChildCount()); i++ {
 		child := node.Child(i)
@@ -250,7 +244,31 @@ func extractJSMethodDefinition(node *sitter.Node, content []byte) functionInfo {
 	return fn
 }
 
-// countJSParameters counts the number of parameters in a formal_parameters node
+func calculateJSCyclomatic(node *sitter.Node, content []byte) int {
+	complexity := 1
+
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_statement", "for_statement", "for_in_statement", "for_of_statement",
+			"while_statement", "do_statement", "switch_case", "catch_clause",
+			"ternary_expression":
+			complexity++
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				op := child.Content(content)
+				if op == "&&" || op == "||" || op == "??" {
+					complexity++
+					break
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
 func countJSParameters(paramsNode *sitter.Node) int {
 	count := 0
 
@@ -268,4 +286,58 @@ func countJSParameters(paramsNode *sitter.Node) int {
 	}
 
 	return count
+}
+
+func calculateJSCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_statement", "for_statement", "for_in_statement", "for_of_statement",
+			"while_statement", "do_statement", "switch_case", "catch_clause":
+			complexity += 2
+		case "ternary_expression":
+			complexity += 1
+		case "binary_expression":
+
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				op := child.Content(content)
+				if op == "&&" || op == "||" || op == "??" {
+					complexity += 1
+					break
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculateJSNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return maxDepth
 }
