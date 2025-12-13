@@ -2,7 +2,6 @@ package complexity
 
 import (
 	"context"
-	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
@@ -11,24 +10,20 @@ import (
 	"github.com/smacker/go-tree-sitter/cpp"
 )
 
-// CCppAnalyzer analyzes C/C++ code for complexity metrics
 type CCppAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewCCppAnalyzer creates a new C/C++ complexity analyzer
 func NewCCppAnalyzer(thresholds models.ComplexityThresholds) *CCppAnalyzer {
 	return &CCppAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *CCppAnalyzer) Language() string {
 	return "C/C++"
 }
 
-// AnalyzeFile analyzes a C/C++ file and returns complexity metrics
 func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
@@ -47,8 +42,8 @@ func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	for _, fn := range functions {
 		cyclomatic := calculateCCppCyclomatic(fn.Node, content)
 
-		cognitive := calculateCCppCognitive(fn.BodyContent)
-		nesting := calculatePatternBasedNesting(fn.BodyContent)
+		cognitive := calculateCCppCognitive(fn.Node, content)
+		nesting := calculateCCppNesting(fn.Node)
 		loc := strings.Count(fn.BodyContent, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -88,7 +83,6 @@ type cCppFunctionInfo struct {
 	ParamCount  int
 }
 
-// findCCppFunctions finds function definitions using Tree-sitter
 func findCCppFunctions(root *sitter.Node, content []byte) []cCppFunctionInfo {
 	var functions []cCppFunctionInfo
 
@@ -213,34 +207,53 @@ func calculateCCppCyclomatic(body *sitter.Node, content []byte) int {
 	return complexity
 }
 
-func calculateCCppCognitive(code string) int {
-	cognitive := 0
-	nestingPatterns := []string{
-		`\bif\b`, `\bwhile\b`, `\bfor\b`, `\bswitch\b`, `\bdo\b`, `\btry\b`,
+func calculateCCppCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_statement", "while_statement", "for_statement", "switch_statement", "do_statement", "catch_clause", "goto_statement":
+			complexity += 2
+		case "binary_expression":
+			op := n.ChildByFieldName("operator")
+			if op != nil {
+				opStr := op.Content(content)
+				if opStr == "&&" || opStr == "||" {
+					complexity += 1
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculateCCppNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "while_statement", "for_statement", "switch_statement", "do_statement", "catch_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.NamedChildCount()); i++ {
+			visit(n.NamedChild(i), newDepth)
+		}
 	}
 
-	for _, pattern := range nestingPatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		cognitive += len(matches) * 2
-	}
-
-	logicalOps := regexp.MustCompile(`&&|\|\|`)
-	cognitive += len(logicalOps.FindAllString(code, -1))
-
-	gotoPattern := regexp.MustCompile(`\bgoto\b`)
-	cognitive += len(gotoPattern.FindAllString(code, -1)) * 4
-
-	pointerOps := regexp.MustCompile(`\*\w+|\w+\*|->|->\*|\.\*`)
-	cognitive += len(pointerOps.FindAllString(code, -1)) / 3
-
-	templatePattern := regexp.MustCompile(`template\s*<`)
-	cognitive += len(templatePattern.FindAllString(code, -1)) * 3
-
-	macroPattern := regexp.MustCompile(`#define`)
-	cognitive += len(macroPattern.FindAllString(code, -1)) * 2
-
-	return cognitive
+	visit(node, 0)
+	return maxDepth
 }
 
 func generateCCppRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {

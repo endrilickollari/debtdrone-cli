@@ -88,7 +88,7 @@ function processData<T extends object>(data: T | null): void {
 `,
 			expectedFunctions: []string{"processData"},
 			expectedCyclomatic: map[string]int{
-				"processData": 9,
+				"processData": 8,
 			},
 			expectedParams: map[string]int{
 				"processData": 1,

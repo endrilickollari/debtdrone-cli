@@ -3,7 +3,6 @@ package complexity
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
@@ -35,8 +34,8 @@ func (a *RustAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 
 	for _, fn := range functions {
 		cyclomatic := calculateRustCyclomatic(fn.node, content)
-		cognitive := calculateRustCognitive(fn.body)
-		nesting := calculateRustNesting(fn.body)
+		cognitive := calculateRustCognitive(fn.node, content)
+		nesting := calculateRustNesting(fn.node)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -214,53 +213,53 @@ func calculateRustCyclomatic(node *sitter.Node, content []byte) int {
 	return complexity
 }
 
-func calculateRustCognitive(code string) int {
-	cognitive := 0
+func calculateRustCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
 
-	nestingPatterns := []string{
-		`\bif\b`, `\bmatch\b`, `\bwhile\b`, `\bfor\b`, `\bloop\b`,
-	}
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_expression", "match_expression", "while_expression", "for_expression", "loop_expression":
+			complexity += 2
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				op := child.Content(content)
+				switch op {
+				case "&&", "||":
+					complexity += 1
+				}
+			}
+		}
+	})
 
-	for _, pattern := range nestingPatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		cognitive += len(matches) * 2
-	}
-
-	logicalOps := regexp.MustCompile(`&&|\|\|`)
-	cognitive += len(logicalOps.FindAllString(code, -1))
-
-	matchArms := regexp.MustCompile(`=>`)
-	cognitive += len(matchArms.FindAllString(code, -1))
-
-	lifetimePattern := regexp.MustCompile(`'[a-z]\w*`)
-	cognitive += len(lifetimePattern.FindAllString(code, -1)) / 2
-
-	unsafePattern := regexp.MustCompile(`\bunsafe\b`)
-	cognitive += len(unsafePattern.FindAllString(code, -1)) * 3
-
-	return cognitive
+	return complexity
 }
 
-func calculateRustNesting(code string) int {
+func calculateRustNesting(node *sitter.Node) int {
 	maxDepth := 0
-	currentDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
 
-	for _, char := range code {
-		switch char {
-		case '{':
-			currentDepth++
-			if currentDepth > maxDepth {
-				maxDepth = currentDepth
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_expression", "match_expression", "while_expression", "for_expression", "loop_expression":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
 			}
-		case '}':
-			currentDepth--
-			if currentDepth < 0 {
-				currentDepth = 0
-			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
 		}
 	}
 
+	visit(node, 0)
 	return maxDepth
 }
 

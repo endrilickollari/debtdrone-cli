@@ -65,7 +65,7 @@ fun String.shout(): String {
 `,
 			expectedFunctions: []string{"shout"},
 			expectedCyclomatic: map[string]int{
-				"shout": 1,
+				"shout": 2,
 			},
 			expectedParams: map[string]int{
 				"shout": 0,
@@ -94,7 +94,7 @@ fun complex(x: Int) {
 `,
 			expectedFunctions: []string{"complex"},
 			expectedCyclomatic: map[string]int{
-				"complex": 9,
+				"complex": 11,
 			},
 			expectedParams: map[string]int{
 				"complex": 1,

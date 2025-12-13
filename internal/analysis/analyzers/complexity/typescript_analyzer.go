@@ -35,8 +35,8 @@ func (a *TypeScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 
 	for _, fn := range functions {
 		cyclomatic := calculateTypeScriptCyclomatic(fn.node, content)
-		cognitive := calculatePatternBasedCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cognitive := calculateTypeScriptCognitive(fn.node, content)
+		nesting := calculateTypeScriptNesting(fn.node)
 		loc := strings.Count(fn.body, "\n") + 1
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 		cognitivePtr := cognitive
@@ -233,4 +233,60 @@ func calculateTypeScriptCyclomatic(node *sitter.Node, content []byte) int {
 	}
 
 	return complexity
+}
+
+func calculateTypeScriptCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		if n.IsNamed() {
+			nodeType := n.Type()
+			switch nodeType {
+			case "if_statement", "for_statement", "for_in_statement", "for_of_statement",
+				"while_statement", "do_statement", "switch_case", "catch_clause":
+				complexity += 2
+			case "ternary_expression":
+				complexity += 1
+			case "binary_expression":
+
+				for i := 0; i < int(n.ChildCount()); i++ {
+					child := n.Child(i)
+					op := child.Content(content)
+					if op == "&&" || op == "||" || op == "??" {
+						complexity += 1
+						break
+					}
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculateTypeScriptNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return maxDepth
 }

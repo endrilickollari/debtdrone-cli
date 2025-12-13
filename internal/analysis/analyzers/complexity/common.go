@@ -1,8 +1,9 @@
 package complexity
 
 import (
-	"regexp"
 	"strings"
+
+	sitter "github.com/smacker/go-tree-sitter"
 )
 
 type functionInfo struct {
@@ -11,98 +12,48 @@ type functionInfo struct {
 	endLine    int
 	body       string
 	paramCount int
+	Node       *sitter.Node
 }
 
-// extractFunctionBody extracts the body of a brace-based function (JS, Java, etc.)
-func extractFunctionBody(lines []string, startLine, maxLines int) string {
-	var body []string
-	braceCount := 0
-	inFunction := false
+func WalkTree(node *sitter.Node, visitor func(*sitter.Node)) {
+	if node == nil {
+		return
+	}
 
-	for i := startLine; i < len(lines) && i < startLine+maxLines; i++ {
-		line := lines[i]
-		body = append(body, line)
+	cursor := sitter.NewTreeCursor(node)
+	defer cursor.Close()
 
-		for _, char := range line {
-			switch char {
-			case '{':
-				braceCount++
-				inFunction = true
-			case '}':
-				braceCount--
-				if inFunction && braceCount == 0 {
-					return strings.Join(body, "\n")
-				}
+	visitor(node)
+
+	for {
+
+		if cursor.GoToFirstChild() {
+			visitor(cursor.CurrentNode())
+			continue
+		}
+
+		if cursor.GoToNextSibling() {
+			visitor(cursor.CurrentNode())
+			continue
+		}
+
+		for cursor.GoToParent() {
+
+			if cursor.CurrentNode().Equal(node) {
+				return
+			}
+			if cursor.GoToNextSibling() {
+				visitor(cursor.CurrentNode())
+				goto NextNode
 			}
 		}
-	}
 
-	return strings.Join(body, "\n")
+		break
+
+	NextNode:
+	}
 }
 
-// calculatePatternBasedCyclomatic calculates cyclomatic complexity using pattern matching
-func calculatePatternBasedCyclomatic(code string) int {
-	complexity := 1
-
-	patterns := []string{
-		`\bif\b`, `\belse\s+if\b`, `\belif\b`, // conditionals
-		`\bfor\b`, `\bforeach\b`, `\bwhile\b`, // loops
-		`\bcase\b`, `\bcatch\b`, // switch/try-catch
-		`&&`, `\|\|`, // logical operators
-		`\?\s*:`, // ternary operator
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		complexity += len(matches)
-	}
-
-	return complexity
-}
-
-// calculatePatternBasedCognitive estimates cognitive complexity
-func calculatePatternBasedCognitive(code string) int {
-	cognitive := 0
-
-	nestingPatterns := []string{
-		`\bif\b`, `\bfor\b`, `\bwhile\b`, `\bswitch\b`, `\btry\b`,
-		`\belif\b`, // Python
-	}
-
-	for _, pattern := range nestingPatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		cognitive += len(matches) * 2
-	}
-
-	logicalOps := regexp.MustCompile(`\b\&\&\b|\b\|\|\b`)
-	cognitive += len(logicalOps.FindAllString(code, -1))
-
-	return cognitive
-}
-
-// calculatePatternBasedNesting estimates maximum nesting depth
-func calculatePatternBasedNesting(code string) int {
-	maxDepth := 0
-	currentDepth := 0
-
-	for _, char := range code {
-		switch char {
-		case '{':
-			currentDepth++
-			if currentDepth > maxDepth {
-				maxDepth = currentDepth
-			}
-		case '}':
-			currentDepth--
-		}
-	}
-
-	return maxDepth
-}
-
-// classifyComplexitySeverity determines severity based on metrics
 func classifyComplexitySeverity(cyclomatic, cognitive, nesting int) string {
 	if cyclomatic > 20 || cognitive > 25 || nesting > 5 {
 		return "critical"
@@ -114,7 +65,6 @@ func classifyComplexitySeverity(cyclomatic, cognitive, nesting int) string {
 	return "low"
 }
 
-// truncateSnippet truncates code snippet to specified length
 func truncateSnippet(code string, maxLen int) string {
 	if len(code) <= maxLen {
 		return code
@@ -122,7 +72,6 @@ func truncateSnippet(code string, maxLen int) string {
 	return code[:maxLen] + "..."
 }
 
-// countParameterString counts the number of parameters in a parameter string
 func countParameterString(params string) int {
 	if strings.TrimSpace(params) == "" {
 		return 0

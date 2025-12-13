@@ -11,24 +11,20 @@ import (
 	"github.com/smacker/go-tree-sitter/php"
 )
 
-// PHPAnalyzer analyzes PHP code for complexity metrics
 type PHPAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewPHPAnalyzer creates a new PHP complexity analyzer
 func NewPHPAnalyzer(thresholds models.ComplexityThresholds) *PHPAnalyzer {
 	return &PHPAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *PHPAnalyzer) Language() string {
 	return "PHP"
 }
 
-// AnalyzeFile analyzes a PHP file and returns complexity metrics
 func (a *PHPAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
@@ -40,10 +36,8 @@ func (a *PHPAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Com
 	for _, fn := range functions {
 		cyclomatic := calculatePHPCyclomatic(fn.node, content)
 
-		// Use existing pattern-based logic for other metrics where appropriate
-		// as they weren't explicitly requested to be AST-based yet.
-		cognitive := calculatePatternBasedCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cognitive := calculatePHPCognitive(fn.node, content)
+		nesting := calculatePHPNesting(fn.node)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -217,4 +211,54 @@ func calculatePHPCyclomatic(node *sitter.Node, content []byte) int {
 	}
 
 	return complexity
+}
+
+func calculatePHPCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "case_statement", "catch_clause", "else_if_clause":
+			complexity += 2
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				op := child.Content(content)
+				switch op {
+				case "&&", "||", "and", "or", "xor":
+					complexity += 1
+				}
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculatePHPNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return maxDepth
 }

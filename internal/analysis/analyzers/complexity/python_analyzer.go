@@ -11,33 +11,28 @@ import (
 	"github.com/google/uuid"
 )
 
-// PythonAnalyzer analyzes Python code for complexity metrics
 type PythonAnalyzer struct {
 	thresholds models.ComplexityThresholds
 }
 
-// NewPythonAnalyzer creates a new Python complexity analyzer
 func NewPythonAnalyzer(thresholds models.ComplexityThresholds) *PythonAnalyzer {
 	return &PythonAnalyzer{
 		thresholds: thresholds,
 	}
 }
 
-// Language returns the language this analyzer supports
 func (a *PythonAnalyzer) Language() string {
 	return "Python"
 }
-
-// AnalyzeFile analyzes a Python file and returns complexity metrics
 func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
 	functions := findPythonFunctions(content)
 
 	for _, fn := range functions {
-		cyclomatic := calculatePatternBasedCyclomatic(fn.body)
-		cognitive := calculatePatternBasedCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cyclomatic := calculatePythonCyclomatic(fn.Node)
+		cognitive := calculatePythonCognitive(fn.Node)
+		nesting := calculatePythonNesting(fn.Node)
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
@@ -64,7 +59,6 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	return metrics, nil
 }
 
-// findPythonFunctions finds function definitions in Python code using Tree-sitter
 func findPythonFunctions(content []byte) []functionInfo {
 	var functions []functionInfo
 
@@ -84,7 +78,6 @@ func findPythonFunctions(content []byte) []functionInfo {
 	return functions
 }
 
-// traverseForFunctions recursively traverses the AST to find function definitions
 func traverseForFunctions(node *sitter.Node, content []byte, functions *[]functionInfo) {
 	if node == nil {
 		return
@@ -105,12 +98,12 @@ func traverseForFunctions(node *sitter.Node, content []byte, functions *[]functi
 	}
 }
 
-// extractPythonFunction extracts function information from a function_definition node
 func extractPythonFunction(node *sitter.Node, content []byte) functionInfo {
 	var fn functionInfo
 
 	fn.line = int(node.StartPoint().Row) + 1
 	fn.endLine = int(node.EndPoint().Row) + 1
+	fn.Node = node
 
 	fn.body = node.Content(content)
 
@@ -133,7 +126,24 @@ func extractPythonFunction(node *sitter.Node, content []byte) functionInfo {
 	return fn
 }
 
-// countPythonParameters counts the number of parameters, excluding 'self' and 'cls'
+func calculatePythonCyclomatic(node *sitter.Node) int {
+	complexity := 1
+
+	WalkTree(node, func(n *sitter.Node) {
+		switch n.Type() {
+		case "if_statement", "elif_clause",
+			"for_statement", "while_statement",
+			"except_clause", "case_clause",
+			"conditional_expression":
+			complexity++
+		case "boolean_operator":
+			complexity++
+		}
+	})
+
+	return complexity
+}
+
 func countPythonParameters(paramsNode *sitter.Node, content []byte) int {
 	count := 0
 
@@ -176,4 +186,47 @@ func countPythonParameters(paramsNode *sitter.Node, content []byte) int {
 	}
 
 	return count
+}
+
+func calculatePythonCognitive(node *sitter.Node) int {
+	complexity := 0
+
+	WalkTree(node, func(n *sitter.Node) {
+		switch n.Type() {
+		case "if_statement", "for_statement", "while_statement", "try_statement", "elif_clause", "except_clause":
+			complexity += 2
+		case "boolean_operator":
+			complexity += 1
+		}
+	})
+
+	return complexity
+}
+
+func calculatePythonNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+
+		switch t {
+		case "if_statement", "for_statement", "while_statement", "match_statement", "except_clause":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return maxDepth
 }

@@ -3,7 +3,6 @@ package complexity
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
@@ -36,8 +35,8 @@ func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.C
 	for _, fn := range functions {
 		cyclomatic := calculateSwiftCyclomatic(fn.node, content)
 
-		cognitive := calculateSwiftCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cognitive := calculateSwiftCognitive(fn.node, content)
+		nesting := calculateSwiftNesting(fn.node)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -258,33 +257,47 @@ func calculateSwiftCyclomatic(node *sitter.Node, content []byte) int {
 	return complexity
 }
 
-func calculateSwiftCognitive(code string) int {
-	cognitive := 0
+func calculateSwiftCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
 
-	nestingPatterns := []string{
-		`\bif\b`, `\bguard\b`, `\bswitch\b`, `\bwhile\b`, `\bfor\b`, `\brepeat\b`, `\bdo\b`,
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_statement", "guard_statement", "switch_statement", "while_statement", "repeat_while_statement", "for_statement", "do_statement", "catch_clause":
+			complexity += 2
+		case "conjunction_expression", "disjunction_expression":
+			complexity += 1
+		}
+	})
+
+	return complexity
+}
+
+func calculateSwiftNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_statement", "for_statement", "while_statement", "do_statement", "catch_clause", "switch_statement":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
 	}
 
-	for _, pattern := range nestingPatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		cognitive += len(matches) * 2
-	}
-
-	logicalOps := regexp.MustCompile(`&&|\|\|`)
-	cognitive += len(logicalOps.FindAllString(code, -1))
-
-	switchCases := regexp.MustCompile(`\bcase\b`)
-	cognitive += len(switchCases.FindAllString(code, -1))
-
-	guardPattern := regexp.MustCompile(`\bguard\b`)
-	cognitive += len(guardPattern.FindAllString(code, -1))
-	optionalHandling := regexp.MustCompile(`\?\?|\?\.|\btry\?|\btry!`)
-	cognitive += len(optionalHandling.FindAllString(code, -1))
-	closuresAsync := regexp.MustCompile(`\basync\b|\bawait\b|\{\s*\w+\s+in`)
-	cognitive += len(closuresAsync.FindAllString(code, -1)) * 2
-
-	return cognitive
+	visit(node, 0)
+	return maxDepth
 }
 
 func generateSwiftRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {

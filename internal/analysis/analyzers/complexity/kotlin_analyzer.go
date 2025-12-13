@@ -3,7 +3,6 @@ package complexity
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
@@ -36,8 +35,8 @@ func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	for _, fn := range functions {
 		cyclomatic := calculateKotlinCyclomatic(fn.node, content)
 
-		cognitive := calculateKotlinCognitive(fn.body)
-		nesting := calculatePatternBasedNesting(fn.body)
+		cognitive := calculateKotlinCognitive(fn.node, content)
+		nesting := calculateKotlinNesting(fn.node)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -225,32 +224,58 @@ func calculateKotlinCyclomatic(node *sitter.Node, content []byte) int {
 	return complexity
 }
 
-func calculateKotlinCognitive(code string) int {
-	cognitive := 0
+func calculateKotlinCognitive(node *sitter.Node, content []byte) int {
+	complexity := 0
 
-	nestingPatterns := []string{
-		`\bif\b`, `\bwhen\b`, `\bwhile\b`, `\bfor\b`, `\btry\b`,
+	WalkTree(node, func(n *sitter.Node) {
+		nodeType := n.Type()
+		switch nodeType {
+		case "if_expression", "when_expression", "while_statement", "for_statement", "do_while_statement", "catch_block":
+			complexity += 2
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				text := child.Content(content)
+				if text == "&&" || text == "||" {
+					complexity += 1
+				}
+			}
+		case "call_expression":
+			text := n.Content(content)
+			if strings.Contains(text, ".let") || strings.Contains(text, ".run") || strings.Contains(text, ".apply") || strings.Contains(text, ".also") {
+				complexity += 1
+			}
+		}
+	})
+
+	return complexity
+}
+
+func calculateKotlinNesting(node *sitter.Node) int {
+	maxDepth := 0
+	var visit func(*sitter.Node, int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+		switch t {
+		case "if_expression", "for_statement", "while_statement", "do_while_statement", "when_expression", "catch_block":
+			newDepth++
+			if newDepth > maxDepth {
+				maxDepth = newDepth
+			}
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
 	}
 
-	for _, pattern := range nestingPatterns {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindAllString(code, -1)
-		cognitive += len(matches) * 2
-	}
-
-	logicalOps := regexp.MustCompile(`&&|\|\|`)
-	cognitive += len(logicalOps.FindAllString(code, -1))
-
-	whenBranches := regexp.MustCompile(`->`)
-	cognitive += len(whenBranches.FindAllString(code, -1))
-
-	nullSafety := regexp.MustCompile(`\?\.|\?:|!!`)
-	cognitive += len(nullSafety.FindAllString(code, -1))
-
-	coroutineKeywords := regexp.MustCompile(`\bsuspend\b|\blaunch\b|\basync\b|\bawait\b`)
-	cognitive += len(coroutineKeywords.FindAllString(code, -1)) * 2
-
-	return cognitive
+	visit(node, 0)
+	return maxDepth
 }
 
 func estimateKotlinTechnicalDebt(cyclomatic, cognitive, loc int) int {
