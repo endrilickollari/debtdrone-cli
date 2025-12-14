@@ -25,7 +25,18 @@ func (a *JavaScriptAnalyzer) Language() string {
 func (a *JavaScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions := findJavaScriptFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(javascript.GetLanguage())
+
+	tree := parser.Parse(nil, content)
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions := findJavaScriptFunctions(root, content)
 
 	for _, fn := range functions {
 		cyclomatic := calculateJSCyclomatic(fn.Node, content)
@@ -57,19 +68,8 @@ func (a *JavaScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 	return metrics, nil
 }
 
-func findJavaScriptFunctions(content []byte) []functionInfo {
+func findJavaScriptFunctions(root *sitter.Node, content []byte) []functionInfo {
 	var functions []functionInfo
-
-	parser := sitter.NewParser()
-	parser.SetLanguage(javascript.GetLanguage())
-
-	tree := parser.Parse(nil, content)
-	if tree == nil {
-		return functions
-	}
-	defer tree.Close()
-
-	root := tree.RootNode()
 
 	traverseForJSFunctions(root, content, &functions)
 

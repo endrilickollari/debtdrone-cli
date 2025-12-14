@@ -27,7 +27,21 @@ func (a *SwiftAnalyzer) Language() string {
 func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findSwiftFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(swift.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions, err := findSwiftFunctions(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse swift functions: %w", err)
 	}
@@ -78,14 +92,7 @@ type swiftFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findSwiftFunctions(content []byte) ([]swiftFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(swift.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findSwiftFunctions(root *sitter.Node, content []byte) ([]swiftFunctionInfo, error) {
 
 	queryStr := `
 		(function_declaration
@@ -110,7 +117,7 @@ func findSwiftFunctions(content []byte) ([]swiftFunctionInfo, error) {
 
 	qc := sitter.NewQueryCursor()
 	defer qc.Close()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []swiftFunctionInfo
 

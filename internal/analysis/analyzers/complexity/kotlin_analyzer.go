@@ -27,7 +27,21 @@ func (a *KotlinAnalyzer) Language() string {
 func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findKotlinFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(kotlin.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions, err := findKotlinFunctions(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse kotlin functions: %w", err)
 	}
@@ -78,14 +92,7 @@ type kotlinFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findKotlinFunctions(content []byte) ([]kotlinFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(kotlin.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findKotlinFunctions(root *sitter.Node, content []byte) ([]kotlinFunctionInfo, error) {
 
 	queryStr := `
 		(function_declaration
@@ -100,7 +107,7 @@ func findKotlinFunctions(content []byte) ([]kotlinFunctionInfo, error) {
 	}
 
 	qc := sitter.NewQueryCursor()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []kotlinFunctionInfo
 

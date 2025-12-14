@@ -27,7 +27,18 @@ func (a *PythonAnalyzer) Language() string {
 func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions := findPythonFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(python.GetLanguage())
+
+	tree, _ := parser.ParseCtx(context.Background(), nil, content)
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions := findPythonFunctions(root, content)
 
 	for _, fn := range functions {
 		cyclomatic := calculatePythonCyclomatic(fn.Node)
@@ -59,19 +70,8 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	return metrics, nil
 }
 
-func findPythonFunctions(content []byte) []functionInfo {
+func findPythonFunctions(root *sitter.Node, content []byte) []functionInfo {
 	var functions []functionInfo
-
-	parser := sitter.NewParser()
-	parser.SetLanguage(python.GetLanguage())
-
-	tree, _ := parser.ParseCtx(context.Background(), nil, content)
-	if tree == nil {
-		return functions
-	}
-	defer tree.Close()
-
-	root := tree.RootNode()
 
 	traverseForFunctions(root, content, &functions)
 

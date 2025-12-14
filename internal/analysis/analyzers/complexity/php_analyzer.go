@@ -28,7 +28,20 @@ func (a *PHPAnalyzer) Language() string {
 func (a *PHPAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findPHPFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(php.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+	functions, err := findPHPFunctions(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse php functions: %w", err)
 	}
@@ -75,14 +88,7 @@ type phpFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findPHPFunctions(content []byte) ([]phpFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(php.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findPHPFunctions(root *sitter.Node, content []byte) ([]phpFunctionInfo, error) {
 
 	queryStr := `
 		(function_definition
@@ -102,7 +108,7 @@ func findPHPFunctions(content []byte) ([]phpFunctionInfo, error) {
 	}
 
 	qc := sitter.NewQueryCursor()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []phpFunctionInfo
 

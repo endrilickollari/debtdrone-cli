@@ -28,7 +28,21 @@ func (a *RubyAnalyzer) Language() string {
 func (a *RubyAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findRubyMethods(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(ruby.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions, err := findRubyMethods(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ruby methods: %w", err)
 	}
@@ -79,14 +93,7 @@ type rubyFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findRubyMethods(content []byte) ([]rubyFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(ruby.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findRubyMethods(root *sitter.Node, content []byte) ([]rubyFunctionInfo, error) {
 
 	queryStr := `
 		(method
@@ -109,7 +116,7 @@ func findRubyMethods(content []byte) ([]rubyFunctionInfo, error) {
 	}
 
 	qc := sitter.NewQueryCursor()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []rubyFunctionInfo
 

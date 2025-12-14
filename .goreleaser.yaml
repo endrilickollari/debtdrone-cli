@@ -98,3 +98,33 @@ release:
 
 announce:
   skip: true
+
+# 7. Homebrew Tap Configuration
+brews:
+  - name: debtdrone
+    
+    # Repository to push the formula to
+    repository:
+      owner: endrilickollari
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    
+    # URL template for downloading the binary
+    url_template: "https://github.com/endrilickollari/debtdrone-cli/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    
+    # Git author for the commit to the tap repo
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    
+    # Folder inside the tap repo where the formula goes
+    directory: Formula
+    
+    # Description and Homepage
+    homepage: "https://github.com/endrilickollari/debtdrone"
+    description: "Technical debt analysis tool for modern codebases."
+    license: "MIT"
+    
+    # Test block to verify installation
+    test: |
+      system "#{bin}/debtdrone --version"
