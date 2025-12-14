@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,10 +28,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func runCLI(args ...string) (string, error) {
+func runCLI(args ...string) (stdout string, stderr string, err error) {
 	cmd := exec.Command("./debtdrone_test", args...)
-	output, err := cmd.CombinedOutput()
-	return string(output), err
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	err = cmd.Run()
+	return stdoutBuf.String(), stderrBuf.String(), err
 }
 
 func copyFile(t *testing.T, src, dst string) {
@@ -100,15 +104,15 @@ func TestCLI_Languages_Integration(t *testing.T) {
 			copyFile(t, src, dst)
 
 			args := []string{"-fail-on", "medium", tmpDir}
-			_, err = runCLI(args...)
+			stdout, stderr, err := runCLI(args...)
 
 			if tt.wantFail {
 				if err == nil {
-					t.Errorf("Expected failure (exit code 1) for %s, but got success", tt.fileName)
+					t.Errorf("Expected failure (exit code 1) for %s, but got success\nStdout: %s\nStderr: %s", tt.fileName, stdout, stderr)
 				}
 			} else {
 				if err != nil {
-					t.Errorf("Expected success (exit code 0) for %s, but got error: %v", tt.fileName, err)
+					t.Errorf("Expected success (exit code 0) for %s, but got error: %v\nStdout: %s\nStderr: %s", tt.fileName, err, stdout, stderr)
 				}
 			}
 		})
@@ -116,46 +120,46 @@ func TestCLI_Languages_Integration(t *testing.T) {
 }
 
 func TestCLI_FailOn_Critical_WithDirtyCode(t *testing.T) {
-	output, err := runCLI("-fail-on", "critical", "./testdata/dirty_code")
+	_, stderr, err := runCLI("-fail-on", "critical", "./testdata/dirty_code")
 
 	if err == nil {
 		t.Error("Expected error (non-zero exit code) for critical debt with -fail-on critical, but got nil")
 	}
 
-	if !strings.Contains(output, "Quality Gate failed") {
-		t.Errorf("Expected output to contain 'Quality Gate failed', got:\n%s", output)
+	if !strings.Contains(stderr, "Quality Gate failed") {
+		t.Errorf("Expected stderr to contain 'Quality Gate failed', got:\n%s", stderr)
 	}
 }
 
 func TestCLI_FailOn_None_WithDirtyCode(t *testing.T) {
-	output, err := runCLI("-fail-on", "none", "./testdata/dirty_code")
+	stdout, stderr, err := runCLI("-fail-on", "none", "./testdata/dirty_code")
 
 	if err != nil {
-		t.Errorf("Expected no error for -fail-on none, but got: %v\nOutput: %s", err, output)
+		t.Errorf("Expected no error for -fail-on none, but got: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 }
 
 func TestCLI_CleanCode(t *testing.T) {
-	output, err := runCLI("./testdata/clean_code")
+	stdout, stderr, err := runCLI("./testdata/clean_code")
 
 	if err != nil {
-		t.Errorf("Expected success for clean code, but got error: %v\nOutput: %s", err, output)
+		t.Errorf("Expected success for clean code, but got error: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
-	if !strings.Contains(output, "Scan passed") {
-		t.Errorf("Expected output to contain 'Scan passed', got:\n%s", output)
+	if !strings.Contains(stderr, "Scan passed") {
+		t.Errorf("Expected stderr to contain 'Scan passed', got:\n%s", stderr)
 	}
 }
 
 func TestCLI_JSONOutput(t *testing.T) {
-	output, err := runCLI("-output", "json", "./testdata/clean_code")
+	stdout, stderr, err := runCLI("-output", "json", "./testdata/clean_code")
 
 	if err != nil {
-		t.Errorf("Expected success for JSON output, but got error: %v\nOutput: %s", err, output)
+		t.Errorf("Expected success for JSON output, but got error: %v\nStdout: %s\nStderr: %s", err, stdout, stderr)
 	}
 
 	var result []interface{}
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		t.Errorf("Output is not valid JSON: %v\nOutput content:\n%s", err, output)
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Errorf("Stdout is not valid JSON: %v\nStdout content:\n%s", err, stdout)
 	}
 }
