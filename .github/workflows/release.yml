@@ -40,5 +40,6 @@ jobs:
             -v $PWD:/code \
             -w /code \
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            --entrypoint /bin/sh \
             ghcr.io/goreleaser/goreleaser-cross:v1.23.2 \
-            release --clean
+            -c "git config --global --add safe.directory /code && goreleaser release --clean"
