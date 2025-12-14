@@ -4,7 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
@@ -17,25 +20,57 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
+func checkDependencies() {
+	if _, err := exec.LookPath("git"); err != nil {
+		fmt.Fprintln(os.Stderr, "❌ Error: git is required but not installed.")
+		os.Exit(1)
+	}
+
+	if _, err := exec.LookPath("trivy"); err != nil {
+		fmt.Fprintln(os.Stderr, "⚠️  Trivy not found. Security scanning will be skipped.")
+	}
+}
+
 func main() {
 
+	versionFlag := flag.Bool("version", false, "Print the version and exit")
 	targetDir := flag.String("path", ".", "Path to the repository to analyze")
 	failOn := flag.String("fail-on", "high", "Fail exit code if issues found with severity >= (low, medium, high, critical, none)")
 	outputFormat := flag.String("output", "text", "Output format (text, json)")
 	flag.Parse()
 
+	if *versionFlag {
+		fmt.Fprintf(os.Stderr, "debtdrone version %s, commit %s, built at %s\n", version, commit, date)
+		os.Exit(0)
+	}
+
+	checkDependencies()
+
+	if len(flag.Args()) > 0 {
+		*targetDir = flag.Args()[0]
+	}
+
+	if *outputFormat == "json" {
+		log.SetOutput(ioutil.Discard)
+	}
+
 	absPath, err := filepath.Abs(*targetDir)
 	if err != nil {
-		fmt.Printf("❌ Failed to resolve path: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Failed to resolve path: %v\n", err)
 		os.Exit(1)
 	}
 
 	if *outputFormat == "text" {
 		printBanner()
-		fmt.Printf("🔍 Scanning repository at: %s\n", absPath)
+		fmt.Fprintf(os.Stderr, "🔍 Scanning repository at: %s\n", absPath)
 	}
 
-	// runStore := memory.NewInMemoryRunStore()
 	complexityStore := memory.NewInMemoryComplexityStore()
 
 	lineCounter := analyzers.NewLineCounter()
@@ -45,13 +80,11 @@ func main() {
 	gitService := git.NewService()
 	repo, err := gitService.OpenLocal(absPath)
 	if err != nil {
-		fmt.Printf("❌ Failed to open repository: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Failed to open repository: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Run Analysis Directly (Skip the Engine Worker Pool for CLI)
 	ctx := context.Background()
-	// Add required context values that analyzers expect
 	ctx = context.WithValue(ctx, "analysisRunID", uuid.New())
 	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
 	ctx = context.WithValue(ctx, "userID", uuid.New())
@@ -67,10 +100,8 @@ func main() {
 	}
 
 	for _, analyzer := range analyzersList {
-		// fmt.Printf("   👉 Running %s...\n", analyzer.Name())
 		result, err := analyzer.Analyze(ctx, repo)
 		if err != nil {
-			// Log error but continue with other analyzers
 		} else {
 			allIssues = append(allIssues, result.Issues...)
 		}
@@ -82,19 +113,21 @@ func main() {
 
 	if bar != nil {
 		bar.Finish()
-		fmt.Println()
+		fmt.Fprintln(os.Stderr)
 	}
 
 	printReport(allIssues, *outputFormat)
 
 	if shouldFail(allIssues, *failOn) {
-		fmt.Println("\n❌ Quality Gate failed: Technical debt threshold exceeded.")
+		fmt.Fprintln(os.Stderr, "\n❌ Quality Gate failed: Technical debt threshold exceeded.")
 		os.Exit(1)
 	}
 
-	if len(allIssues) > 0 {
-		fmt.Printf("\n⚠️  Scan completed with %d issues.\n", len(allIssues))
-	} else {
-		fmt.Println("\n✅ Scan passed. No issues found.")
+	if *outputFormat == "text" {
+		if len(allIssues) > 0 {
+			fmt.Fprintf(os.Stderr, "\n⚠️  Scan completed with %d issues.\n", len(allIssues))
+		} else {
+			fmt.Fprintln(os.Stderr, "\n✅ Scan passed. No issues found.")
+		}
 	}
 }

@@ -28,7 +28,21 @@ func (a *TypeScriptAnalyzer) Language() string {
 func (a *TypeScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findTypeScriptFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(typescript.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions, err := findTypeScriptFunctions(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse typescript functions: %w", err)
 	}
@@ -72,14 +86,7 @@ type tsFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findTypeScriptFunctions(content []byte) ([]tsFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(typescript.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findTypeScriptFunctions(root *sitter.Node, content []byte) ([]tsFunctionInfo, error) {
 
 	queryStr := `
 		(function_declaration
@@ -111,7 +118,7 @@ func findTypeScriptFunctions(content []byte) ([]tsFunctionInfo, error) {
 
 	qc := sitter.NewQueryCursor()
 	defer qc.Close()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []tsFunctionInfo
 

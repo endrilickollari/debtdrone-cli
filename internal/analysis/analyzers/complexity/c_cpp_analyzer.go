@@ -35,6 +35,7 @@ func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	if err != nil {
 		return nil, err
 	}
+	defer tree.Close()
 
 	root := tree.RootNode()
 	functions := findCCppFunctions(root, content)

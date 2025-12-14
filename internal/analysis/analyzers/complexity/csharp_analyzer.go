@@ -35,6 +35,7 @@ func (a *CSharpAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	if err != nil {
 		return nil, err
 	}
+	defer tree.Close()
 
 	root := tree.RootNode()
 	functions := findCSharpFunctions(root, content)

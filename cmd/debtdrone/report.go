@@ -10,6 +10,9 @@ import (
 
 func printReport(issues []models.TechnicalDebtIssue, format string) {
 	if format == "json" {
+		if issues == nil {
+			issues = []models.TechnicalDebtIssue{}
+		}
 		output, _ := json.MarshalIndent(issues, "", "  ")
 		fmt.Println(string(output))
 		return

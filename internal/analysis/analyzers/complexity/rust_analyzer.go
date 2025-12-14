@@ -27,7 +27,21 @@ func (a *RustAnalyzer) Language() string {
 func (a *RustAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findRustFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(rust.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	functions, err := findRustFunctions(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse rust functions: %w", err)
 	}
@@ -77,14 +91,7 @@ type rustFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findRustFunctions(content []byte) ([]rustFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(rust.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findRustFunctions(root *sitter.Node, content []byte) ([]rustFunctionInfo, error) {
 
 	queryStr := `
 		(function_item
@@ -100,7 +107,7 @@ func findRustFunctions(content []byte) ([]rustFunctionInfo, error) {
 	}
 
 	qc := sitter.NewQueryCursor()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []rustFunctionInfo
 

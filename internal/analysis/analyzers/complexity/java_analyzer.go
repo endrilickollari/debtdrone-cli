@@ -27,7 +27,20 @@ func (a *JavaAnalyzer) Language() string {
 func (a *JavaAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.ComplexityMetric, error) {
 	var metrics []models.ComplexityMetric
 
-	functions, err := findJavaFunctions(content)
+	parser := sitter.NewParser()
+	parser.SetLanguage(java.GetLanguage())
+
+	tree, err := parser.ParseCtx(context.Background(), nil, content)
+	if err != nil {
+		return nil, err
+	}
+	if tree == nil {
+		return metrics, nil
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+	functions, err := findJavaFunctions(root, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse java functions: %w", err)
 	}
@@ -72,14 +85,7 @@ type javaFunctionInfo struct {
 	node       *sitter.Node
 }
 
-func findJavaFunctions(content []byte) ([]javaFunctionInfo, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(java.GetLanguage())
-
-	tree, err := parser.ParseCtx(context.Background(), nil, content)
-	if err != nil {
-		return nil, err
-	}
+func findJavaFunctions(root *sitter.Node, content []byte) ([]javaFunctionInfo, error) {
 
 	queryStr := `
 		(method_declaration
@@ -106,7 +112,7 @@ func findJavaFunctions(content []byte) ([]javaFunctionInfo, error) {
 	}
 
 	qc := sitter.NewQueryCursor()
-	qc.Exec(q, tree.RootNode())
+	qc.Exec(q, root)
 
 	var functions []javaFunctionInfo
 
