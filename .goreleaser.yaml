@@ -77,23 +77,38 @@ release:
   github:
     owner: endrilickollari
     name: debtdrone-cli
+  
   draft: false
   prerelease: auto
   mode: replace
+  
   header: |
-    ## DebtDrone CLI {{ .Tag }}
+    ## 🚀 DebtDrone CLI {{ .Tag }}
 
-    **Stop counting lines. Start fixing debt.**
+    > **Stop counting lines. Start fixing debt.**
 
-    ### Installation
+    ### 📦 Quick Install
 
+    **Homebrew (Recommended):**
     ```bash
-    curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/install.sh | bash
+    brew install endrilickollari/tap/debtdrone
     ```
 
-    Or download the binary for your platform below.
+    **Shell Script (Mac/Linux):**
+    ```bash
+    curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
+    ```
+
+    **PowerShell (Windows):**
+    ```powershell
+    iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.ps1 | iex
+    ```
+
   footer: |
     ---
+    ### 🔒 Verification
+    SHA256 checksums are available in `checksums.txt` below.
+
     **Full Changelog**: https://github.com/endrilickollari/debtdrone-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 announce:

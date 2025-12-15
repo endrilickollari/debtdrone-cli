@@ -50,17 +50,19 @@ If your linter is guessing, you're not measuring debt—you're measuring noise.
 
 ## 📦 Installation
 
-> 💡 **For build instructions and release process**, see [BUILD.md](BUILD.md)
+### via Homebrew (Recommended for macOS & Linux)
 
-### One-Line Install (Mac & Linux)
+```bash
+brew install endrilickollari/tap/debtdrone
+```
 
-The fastest way to get started. This script automatically detects your OS and architecture, downloads the latest release, and installs it to your path.
+### via Shell Script (Linux & macOS)
 
 ```bash
 curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
 ```
 
-### One-Line Install (Windows PowerShell)
+### via PowerShell (Windows)
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.ps1 | iex
@@ -68,11 +70,23 @@ iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/i
 
 ### Manual Download
 
-You can download pre-compiled binaries for macOS and Linux directly from the [Releases Page](https://github.com/endrilickollari/debtdrone-cli/releases).
+Download pre-compiled binaries from the [Releases Page](https://github.com/endrilickollari/debtdrone-cli/releases).
 
-1. Download the `.tar.gz` (Mac/Linux) or `.zip` (Windows) archive for your platform.
-2. Extract the binary.
-3. Move it to your system `PATH` (e.g., `/usr/local/bin` for \*nix, or `$env:LOCALAPPDATA` for Windows).
+---
+
+## 🛠️ Build from Source
+
+**Prerequisites:**
+
+- Go 1.22+
+- C Compiler (gcc/clang) - _Required for Tree-sitter engine_
+
+```bash
+git clone https://github.com/endrilickollari/debtdrone-cli.git
+cd debtdrone-cli
+go build -o debtdrone ./cmd/debtdrone
+./debtdrone -version
+```
 
 ---
 
@@ -80,27 +94,33 @@ You can download pre-compiled binaries for macOS and Linux directly from the [Re
 
 ### Basic Scan
 
+Run inside your project root:
+
 ```bash
-debtdrone scan .
+debtdrone
 ```
 
-Analyzes the current directory and outputs a summary of technical debt and security issues.
+Or specify a path:
+
+```bash
+debtdrone ./src/my-project
+```
 
 ### CI/CD Pipeline
 
-```bash
-debtdrone scan . --fail-on critical
-```
-
-Exits with code `1` if any **critical** issues are found. Perfect for GitHub Actions, GitLab CI, or Jenkins.
-
-### JSON Output for Reporting
+Fail the build if critical issues are found:
 
 ```bash
-debtdrone scan . --output json > report.json
+debtdrone -path . -fail-on critical
 ```
 
-Generates machine-readable output for dashboards, SLAs, or integration with other tools.
+### JSON Output
+
+Generate a report for other tools:
+
+```bash
+debtdrone -output json > report.json
+```
 
 ---
 
