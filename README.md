@@ -163,3 +163,11 @@ This repository serves as the **public distribution channel** for DebtDrone CLI.
 **Built with ❤️.**
 
 </div>
+
+---
+
+## ☕ Support the Project
+
+If DebtDrone helped you fix a critical issue or saved you time, consider buying me a coffee!
+
+<a href="https://www.buymeacoffee.com/endri.lickollari" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
