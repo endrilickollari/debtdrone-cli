@@ -1,0 +1,42 @@
+{
+  "complexity_avg_cyclomatic": 8,
+  "complexity_critical_functions": 0,
+  "complexity_functions_analyzed": 1,
+  "complexity_high_functions": 1,
+  "complexity_max_cyclomatic": 8,
+  "complexity_total_debt_hours": 0,
+  "file_count": 1,
+  "issues": [
+    {
+      "assigned_to_user_id": null,
+      "category": "maintainability",
+      "code_snippet": "func ComplexFunction(a, b, c int) int {\n\tif a \u003e 0 {\n\t\tif b \u003e 0 {\n\t\t\tif c \u003e 0 {\n\t\t\t\treturn 1\n\t\t\t} else {\n\t\t\t\treturn 2\n\t\t\t}\n\t\t} else {\n\t\t\tif c \u003e 0 {\n\t\t\t\treturn 3\n\t\t\t} else {\n\t\t\t\treturn 4\n\t\t\t}\n\t\t}\n\t} else {\n\t\tfor i := 0; i \u003c 10; i++ {\n\t\t\tif i%2 == 0 {\n\t\t\t\tfmt.Println(i)\n\t\t\t} else {\n\t\t\t\tif i%3 == 0 {\n\t\t\t\t\tfmt.Println(\"fizz\")\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn 0\n}",
+      "column_number": null,
+      "comments": null,
+      "confidence_score": 1,
+      "description": "Function: ComplexFunction\nCyclomatic Complexity: 8\nCognitive Complexity: 18\nNesting Depth: 3\nParameters: 3\nLines of Code: 28\nEstimated Refactoring Time: 0 minutes\n\nRefactoring Suggestions:\n- [HIGH] Reduce Cognitive Complexity: Simplify the mental model required to understand this code",
+      "effort_multiplier": 1,
+      "external_id": null,
+      "external_platform": null,
+      "external_url": null,
+      "file_path": "/complex.go",
+      "fingerprint_hash": "",
+      "ignore_until": null,
+      "issue_type": "complexity",
+      "jira_sync_status": "",
+      "line_number": 5,
+      "message": "Function 'ComplexFunction' has complexity issues",
+      "resolution_reason": null,
+      "resolved_at": null,
+      "resolved_by_user_id": null,
+      "severity": "high",
+      "status": "open",
+      "surrounding_context": null,
+      "technical_debt_hours": 0,
+      "tool_name": "complexity_analyzer",
+      "tool_rule_id": null,
+      "trello_sync_status": ""
+    }
+  ],
+  "loc": 32
+}

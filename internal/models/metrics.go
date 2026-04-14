@@ -52,17 +52,19 @@ type MetricsTrend struct {
 }
 
 type DashboardStats struct {
-	TotalRepositories int          `json:"total_repositories"`
-	TotalIssues       int          `json:"total_issues"`
-	AvgCodeCoverage   float64      `json:"avg_code_coverage"`
-	AvgComplexity     float64      `json:"avg_complexity"`
-	ActiveUsersCount  int          `json:"active_users_count"`
-	ResolvedThisWeek  int          `json:"resolved_this_week"`
-	ReportsGenerated  int          `json:"reports_generated"`
-	RepositoriesTrend MetricsTrend `json:"repositories_trend"`
-	IssuesTrend       MetricsTrend `json:"issues_trend"`
-	CoverageTrend     MetricsTrend `json:"coverage_trend"`
-	ComplexityTrend   MetricsTrend `json:"complexity_trend"`
+	TotalRepositories       int          `json:"total_repositories"`
+	ActiveRepositories      int          `json:"active_repositories"`
+	TotalIssues             int          `json:"total_issues"`
+	TotalTechnicalDebtHours float64      `json:"total_technical_debt_hours"`
+	AvgCodeCoverage         float64      `json:"avg_code_coverage"`
+	AvgComplexity           float64      `json:"avg_complexity"`
+	ActiveUsersCount        int          `json:"active_users_count"`
+	ResolvedThisWeek        int          `json:"resolved_this_week"`
+	ReportsGenerated        int          `json:"reports_generated"`
+	RepositoriesTrend       MetricsTrend `json:"repositories_trend"`
+	IssuesTrend             MetricsTrend `json:"issues_trend"`
+	CoverageTrend           MetricsTrend `json:"coverage_trend"`
+	ComplexityTrend         MetricsTrend `json:"complexity_trend"`
 }
 
 type ActiveUsersSummary struct {
@@ -100,3 +102,38 @@ const (
 	MetricTypeTrendData      = "trend_data"
 	MetricTypeDashboardStats = "dashboard_stats"
 )
+
+type GlobalMetricTrend struct {
+	Date  time.Time `json:"date"`
+	Value float64   `json:"value"`
+}
+
+type ResolutionVelocity struct {
+	Date          time.Time `json:"date"`
+	CreatedCount  int       `json:"created_count"`
+	ResolvedCount int       `json:"resolved_count"`
+}
+
+type DashboardEvolution struct {
+	DebtTrend          []GlobalMetricTrend  `json:"debt_trend"`
+	CoverageTrend      []GlobalMetricTrend  `json:"coverage_trend"`
+	GradeDistribution  map[string]int       `json:"grade_distribution"`
+	ResolutionVelocity []ResolutionVelocity `json:"resolution_velocity"`
+}
+
+type IssueLedger struct {
+	CriticalCount           int     `json:"critical_count"`
+	UnassignedCriticalCount int     `json:"unassigned_critical_count"`
+	HighCount               int     `json:"high_count"`
+	MediumCount             int     `json:"medium_count"`
+	LowCount                int     `json:"low_count"`
+	TotalDebtHours          float64 `json:"total_debt_hours"`
+	TotalIssues             int     `json:"total_issues"`
+}
+
+type TopOffender struct {
+	FilePath       string  `json:"file_path"`
+	RepositoryName string  `json:"repository_name"`
+	TotalDebtHours float64 `json:"total_debt_hours"`
+	IssueCount     int     `json:"issue_count"`
+}

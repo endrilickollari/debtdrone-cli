@@ -125,12 +125,14 @@ def complex_logic(x)
   end
 end
 `,
-			expectedFunctions: []string{"complex_logic"},
+			expectedFunctions: []string{"complex_logic", "<block>"},
 			expectedCyclomatic: map[string]int{
 				"complex_logic": 11,
+				"<block>":       2,
 			},
 			expectedParams: map[string]int{
 				"complex_logic": 1,
+				"<block>":       3,
 			},
 		},
 	}

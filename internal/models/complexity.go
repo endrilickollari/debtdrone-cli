@@ -45,6 +45,22 @@ type ComplexityMetric struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
+type ComplexityConfig struct {
+	CyclomaticThreshold int
+	CognitiveThreshold  int
+	CostPerPoint        int
+	AnalysisMode        string
+}
+
+func DefaultComplexityConfig() ComplexityConfig {
+	return ComplexityConfig{
+		CyclomaticThreshold: 10,
+		CognitiveThreshold:  15,
+		CostPerPoint:        30,
+		AnalysisMode:        "strict",
+	}
+}
+
 type RefactoringSuggestion struct {
 	Type        string `json:"type"`
 	Priority    string `json:"priority"`

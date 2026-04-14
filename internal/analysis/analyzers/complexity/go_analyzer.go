@@ -38,14 +38,17 @@ func (a *GoAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Comp
 	metrics := []models.ComplexityMetric{}
 
 	ast.Inspect(file, func(n ast.Node) bool {
-		fn, ok := n.(*ast.FuncDecl)
-		if !ok {
-			return true
-		}
-
-		metric := a.analyzeFunction(fset, fn, filePath)
-		if metric != nil {
-			metrics = append(metrics, *metric)
+		switch node := n.(type) {
+		case *ast.FuncDecl:
+			metric := a.analyzeFunction(fset, node.Body, node.Name.Name, node.Type, node.Recv, node.Pos(), node.End(), node, filePath, content)
+			if metric != nil {
+				metrics = append(metrics, *metric)
+			}
+		case *ast.FuncLit:
+			metric := a.analyzeFunction(fset, node.Body, "<anonymous>", node.Type, nil, node.Pos(), node.End(), node, filePath, content)
+			if metric != nil {
+				metrics = append(metrics, *metric)
+			}
 		}
 
 		return true
@@ -55,27 +58,37 @@ func (a *GoAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Comp
 }
 
 // analyzeFunction analyzes a single function and returns its complexity metrics
-func (a *GoAnalyzer) analyzeFunction(fset *token.FileSet, fn *ast.FuncDecl, filePath string) *models.ComplexityMetric {
-	if fn.Body == nil {
+func (a *GoAnalyzer) analyzeFunction(
+	fset *token.FileSet,
+	body *ast.BlockStmt,
+	name string,
+	funcType *ast.FuncType,
+	recv *ast.FieldList,
+	pos token.Pos,
+	end token.Pos,
+	node ast.Node,
+	filePath string,
+	content []byte,
+) *models.ComplexityMetric {
+	if body == nil {
 		return nil
 	}
 
-	funcName := fn.Name.Name
-	if fn.Recv != nil && len(fn.Recv.List) > 0 {
-		recvType := extractReceiverType(fn.Recv.List[0].Type)
-		funcName = fmt.Sprintf("(%s).%s", recvType, fn.Name.Name)
+	funcName := name
+	if recv != nil && len(recv.List) > 0 {
+		recvType := extractReceiverType(recv.List[0].Type)
+		funcName = fmt.Sprintf("(%s).%s", recvType, name)
 	}
 
-	startPos := fset.Position(fn.Pos())
-	endPos := fset.Position(fn.End())
+	startPos := fset.Position(pos)
+	endPos := fset.Position(end)
 
-	cyclomaticComplexity := calculateCyclomaticComplexity(fn)
-	cognitiveComplexity := calculateCognitiveComplexity(fn)
-	nestingDepth := calculateNestingDepth(fn.Body)
-	paramCount := countParameters(fn)
+	nodes := mapGoNodes(body)
+	cyclomaticComplexity, cognitiveComplexity, nestingDepth := CalculateComplexity(nodes)
+	paramCount := countParameters(funcType)
 	loc := endPos.Line - startPos.Line + 1
 
-	codeSnippet := extractCodeSnippet(fset, fn)
+	codeSnippet := extractCodeSnippet(fset, node, content)
 
 	debtMinutes := models.CalculateTechnicalDebt(
 		cyclomaticComplexity,

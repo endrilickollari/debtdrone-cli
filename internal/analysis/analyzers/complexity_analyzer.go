@@ -56,14 +56,30 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		return nil, fmt.Errorf("userID not found in context")
 	}
 
+	var targetFilesMap map[string]bool
+	if targetFiles, ok := ctx.Value("targetFiles").([]string); ok && len(targetFiles) > 0 {
+		targetFilesMap = make(map[string]bool)
+		for _, f := range targetFiles {
+			targetFilesMap[f] = true
+		}
+		log.Printf("🔬 Incremental analysis: targeting %d changed files", len(targetFiles))
+	}
+
+	config, ok := ctx.Value("complexityConfig").(models.ComplexityConfig)
+	if !ok {
+		config = models.DefaultComplexityConfig()
+	}
+
 	allMetrics := []models.ComplexityMetric{}
 
 	err := filepath.Walk(repo.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+		if info == nil {
+			return nil
+		}
 		if info.IsDir() {
-			// Skip common directories that shouldn't be analyzed
 			dirName := filepath.Base(path)
 			if dirName == ".git" || dirName == "node_modules" || dirName == "vendor" ||
 				dirName == ".venv" || dirName == "venv" || dirName == "__pycache__" {
@@ -72,12 +88,38 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 			return nil
 		}
 
-		if !a.factory.IsSupported(path) {
+		relPath, err := filepath.Rel(repo.Path, path)
+		if err != nil {
+			relPath = path
+		}
+		// Ensure relPath has leading slash to match format from repo.FS
+		if !strings.HasPrefix(relPath, "/") {
+			relPath = "/" + relPath
+		}
+
+		if targetFilesMap != nil && !targetFilesMap[relPath] {
+			if ctx.Value("isCLI") != true {
+				log.Printf("🔍 Skipping %s - not in target files", relPath)
+			}
 			return nil
 		}
+
+		if !a.factory.IsSupported(path) {
+			if ctx.Value("isCLI") != true {
+				log.Printf("🔍 Skipping %s - unsupported file type", relPath)
+			}
+			return nil
+		}
+
+		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+			return nil
+		}
+
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
-			log.Printf("⚠️  Failed to read file %s: %v", path, err)
+			if ctx.Value("isCLI") != true {
+				log.Printf("⚠️  Failed to read file %s: %v", path, err)
+			}
 			return nil
 		}
 
@@ -86,14 +128,19 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 			return nil
 		}
 
-		relPath, err := filepath.Rel(repo.Path, path)
-		if err != nil {
-			relPath = path
-		}
 		metrics, err := analyzer.AnalyzeFile(relPath, content)
 		if err != nil {
-			log.Printf("⚠️  Failed to analyze file %s: %v", relPath, err)
+			if ctx.Value("isCLI") != true {
+				log.Printf("⚠️  Failed to analyze file %s: %v", relPath, err)
+			}
 			return nil
+		}
+
+		if len(metrics) > 0 {
+			// Only log in non-CLI mode to avoid polluting TUI output
+			if ctx.Value("isCLI") != true {
+				log.Printf("🔍 Analyzed %s - found %d functions", relPath, len(metrics))
+			}
 		}
 
 		for i := range metrics {
@@ -101,6 +148,10 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 			metrics[i].UserID = userID
 			metrics[i].RepositoryID = repositoryID
 			metrics[i].AnalysisRunID = analysisRunID
+
+			// Recalculate debt based on dynamic configuration
+			debtHours := a.CalculateDebt(metrics[i].CyclomaticComplexity, config)
+			metrics[i].TechnicalDebtMinutes = int(debtHours * 60)
 		}
 
 		allMetrics = append(allMetrics, metrics...)
@@ -109,27 +160,32 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 	})
 
 	if err != nil {
-		log.Printf("❌ Error walking repository: %v", err)
+		if ctx.Value("isCLI") != true {
+			log.Printf("❌ Error walking repository: %v", err)
+		}
 		return &analysis.Result{
 			Issues:  []models.TechnicalDebtIssue{},
 			Metrics: map[string]interface{}{},
 		}, err
 	}
 
-	log.Printf("✅ Analyzed %d functions across repository", len(allMetrics))
+	if ctx.Value("isCLI") != true {
+		log.Printf("✅ Analyzed %d functions across repository", len(allMetrics))
+	}
 
-	if len(allMetrics) > 0 && a.complexityStore != nil {
-		err = a.complexityStore.BatchCreate(ctx, allMetrics)
-		if err != nil {
-			log.Printf("❌ Failed to save complexity metrics: %v", err)
-			return &analysis.Result{
-				Issues:  []models.TechnicalDebtIssue{},
-				Metrics: map[string]interface{}{"complexity_metrics_count": len(allMetrics)},
-			}, err
+	if config.AnalysisMode == "legacy" {
+		filtered := allMetrics[:0]
+		for _, m := range allMetrics {
+			switch m.FunctionName {
+			case "<anonymous>", "<lambda>", "<closure>", "<block>":
+				continue
+			}
+			filtered = append(filtered, m)
 		}
 		if ctx.Value("isCLI") != true {
-			log.Printf("✅ Saved %d complexity metrics to database", len(allMetrics))
+			log.Printf("🔀 Legacy mode: filtered %d anonymous constructs from scoring", len(allMetrics)-len(filtered))
 		}
+		allMetrics = filtered
 	}
 
 	issues := a.convertToIssues(allMetrics)
@@ -139,6 +195,13 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		Issues:  issues,
 		Metrics: summary,
 	}, nil
+}
+
+func (a *ComplexityAnalyzer) CalculateDebt(complexity int, config models.ComplexityConfig) float64 {
+	if complexity <= config.CyclomaticThreshold {
+		return 0
+	}
+	return float64((complexity-config.CyclomaticThreshold)*config.CostPerPoint) / 60.0
 }
 
 func (a *ComplexityAnalyzer) convertToIssues(metrics []models.ComplexityMetric) []models.TechnicalDebtIssue {

@@ -16,6 +16,8 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/internal/store/memory"
+	"github.com/endrilickollari/debtdrone-cli/internal/tui"
+	"github.com/endrilickollari/debtdrone-cli/internal/update"
 	"github.com/google/uuid"
 	"github.com/schollz/progressbar/v3"
 )
@@ -37,17 +39,56 @@ func checkDependencies() {
 	}
 }
 
-func main() {
+func runAutoUpdate() {
+	ctx := context.Background()
+	info, err := update.CheckForUpdate(ctx, version)
+	if err != nil {
+		return
+	}
 
+	if info.Available {
+		fmt.Printf("🔔 New version available: %s\n", info.Version)
+		fmt.Print("Would you like to update now? (y/n): ")
+
+		var response string
+		fmt.Scanln(&response)
+
+		if response == "y" || response == "Y" {
+			fmt.Println("🔄 Updating...")
+			if err := update.PerformUpdate(ctx); err != nil {
+				fmt.Printf("❌ Update failed: %v\n", err)
+			} else {
+				fmt.Println("✅ Update installed! Please restart the application.")
+				os.Exit(0)
+			}
+		}
+	}
+}
+
+func main() {
 	versionFlag := flag.Bool("version", false, "Print the version and exit")
 	targetDir := flag.String("path", ".", "Path to the repository to analyze")
 	failOn := flag.String("fail-on", "high", "Fail exit code if issues found with severity >= (low, medium, high, critical, none)")
 	outputFormat := flag.String("output", "text", "Output format (text, json)")
+	tuiMode := flag.Bool("tui", false, "Force TUI mode")
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Fprintf(os.Stderr, "debtdrone version %s, commit %s, built at %s\n", version, commit, date)
 		os.Exit(0)
+	}
+
+	hasCLIArgs := len(os.Args) > 1 && (len(flag.Args()) > 0 || os.Args[1] == "-tui")
+
+	if !hasCLIArgs || *tuiMode {
+		fmt.Println("Starting DebtDrone TUI...")
+		runAutoUpdate()
+
+		if err := tui.RunTUI(); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ TUI error: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	checkDependencies()

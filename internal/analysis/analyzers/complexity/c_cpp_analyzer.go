@@ -41,10 +41,8 @@ func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	functions := findCCppFunctions(root, content)
 
 	for _, fn := range functions {
-		cyclomatic := calculateCCppCyclomatic(fn.Node, content)
-
-		cognitive := calculateCCppCognitive(fn.Node, content)
-		nesting := calculateCCppNesting(fn.Node)
+		nodes := mapCCppNodes(fn.Node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.BodyContent, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -52,7 +50,7 @@ func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 		suggestions := generateCCppRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.ParamCount, loc)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.BodyContent, 300)
+		snippetStr := truncateSnippet(fn.BodyContent, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                     uuid.New(),
@@ -87,7 +85,10 @@ type cCppFunctionInfo struct {
 func findCCppFunctions(root *sitter.Node, content []byte) []cCppFunctionInfo {
 	var functions []cCppFunctionInfo
 
-	queryStr := `(function_definition declarator: (_) @declarator body: (_) @body)`
+	queryStr := `
+		(function_definition declarator: (_) @declarator body: (_) @body)
+		(lambda_expression body: (_) @body) @lambda
+	`
 	q, _ := sitter.NewQuery([]byte(queryStr), cpp.GetLanguage())
 	qc := sitter.NewQueryCursor()
 	defer qc.Close()
@@ -109,15 +110,22 @@ func findCCppFunctions(root *sitter.Node, content []byte) []cCppFunctionInfo {
 				declaratorNode = c.Node
 			} else if name == "body" {
 				bodyNode = c.Node
+			} else if name == "lambda" {
+				declaratorNode = c.Node // Fallback node reference
 			}
 		}
 
-		if declaratorNode == nil || bodyNode == nil {
+		if bodyNode == nil {
 			continue
 		}
 
+		funcName := "<lambda>"
+		if declaratorNode != nil && declaratorNode.Type() != "lambda_expression" {
+			funcName = extractFunctionName(declaratorNode, content)
+		}
+
 		functions = append(functions, cCppFunctionInfo{
-			Name:        extractFunctionName(declaratorNode, content),
+			Name:        funcName,
 			Node:        bodyNode,
 			BodyContent: bodyNode.Content(content),
 			ParamCount:  countCCppParameters(declaratorNode),
@@ -176,62 +184,8 @@ func countCCppParameters(declarator *sitter.Node) int {
 	return count
 }
 
-func calculateCCppCyclomatic(body *sitter.Node, content []byte) int {
-	complexity := 1
-
-	var visit func(*sitter.Node)
-	visit = func(n *sitter.Node) {
-		t := n.Type()
-		switch t {
-		case "if_statement", "while_statement", "for_statement", "range_based_for_statement",
-			"do_statement", "case_statement", "catch_clause", "conditional_expression":
-			complexity++
-		case "binary_expression":
-			op := n.ChildByFieldName("operator")
-			if op != nil {
-				opStr := op.Content(content)
-				if opStr == "&&" || opStr == "||" {
-					complexity++
-				}
-			}
-		}
-
-		for i := 0; i < int(n.NamedChildCount()); i++ {
-			visit(n.NamedChild(i))
-		}
-	}
-
-	if body != nil {
-		visit(body)
-	}
-
-	return complexity
-}
-
-func calculateCCppCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		nodeType := n.Type()
-		switch nodeType {
-		case "if_statement", "while_statement", "for_statement", "switch_statement", "do_statement", "catch_clause", "goto_statement":
-			complexity += 2
-		case "binary_expression":
-			op := n.ChildByFieldName("operator")
-			if op != nil {
-				opStr := op.Content(content)
-				if opStr == "&&" || opStr == "||" {
-					complexity += 1
-				}
-			}
-		}
-	})
-
-	return complexity
-}
-
-func calculateCCppNesting(node *sitter.Node) int {
-	maxDepth := 0
+func mapCCppNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
 	var visit func(*sitter.Node, int)
 	visit = func(n *sitter.Node, depth int) {
 		if n == nil {
@@ -241,11 +195,26 @@ func calculateCCppNesting(node *sitter.Node) int {
 		newDepth := depth
 		t := n.Type()
 		switch t {
-		case "if_statement", "while_statement", "for_statement", "switch_statement", "do_statement", "catch_clause":
+		case "if_statement", "case_statement", "catch_clause", "conditional_expression", "goto_statement":
+			nodes = append(nodes, Node{Type: Branch, Depth: depth})
 			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
+		case "switch_statement":
+			nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+			newDepth++
+		case "while_statement", "for_statement", "range_based_for_statement", "do_statement":
+			nodes = append(nodes, Node{Type: Loop, Depth: depth})
+			newDepth++
+		case "binary_expression":
+			op := n.ChildByFieldName("operator")
+			if op != nil {
+				opStr := op.Content(content)
+				if opStr == "&&" || opStr == "||" {
+					nodes = append(nodes, Node{Type: Operator, Depth: depth})
+				}
 			}
+		case "lambda_expression":
+			nodes = append(nodes, Node{Type: Closure, Depth: depth})
+			newDepth++
 		}
 
 		for i := 0; i < int(n.NamedChildCount()); i++ {
@@ -254,8 +223,10 @@ func calculateCCppNesting(node *sitter.Node) int {
 	}
 
 	visit(node, 0)
-	return maxDepth
+	return nodes
 }
+
+
 
 func generateCCppRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {
 	var suggestions []models.RefactoringSuggestion

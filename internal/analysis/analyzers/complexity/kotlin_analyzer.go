@@ -47,10 +47,8 @@ func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateKotlinCyclomatic(fn.node, content)
-
-		cognitive := calculateKotlinCognitive(fn.node, content)
-		nesting := calculateKotlinNesting(fn.node)
+		nodes := mapKotlinNodes(fn.node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -58,7 +56,7 @@ func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 		suggestions := generateKotlinRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.paramCount, loc)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                     uuid.New(),
@@ -96,9 +94,13 @@ func findKotlinFunctions(root *sitter.Node, content []byte) ([]kotlinFunctionInf
 
 	queryStr := `
 		(function_declaration
-			(simple_identifier) @name
-			(function_body) @body
+			(simple_identifier)? @name
+			(function_body)? @body
 		) @function
+		(anonymous_function
+			(function_body)? @body
+		) @lambda
+		(lambda_literal) @lambda
 	`
 
 	q, err := sitter.NewQuery([]byte(queryStr), kotlin.GetLanguage())
@@ -125,7 +127,7 @@ func findKotlinFunctions(root *sitter.Node, content []byte) ([]kotlinFunctionInf
 		for _, c := range m.Captures {
 			captureName := q.CaptureNameForId(c.Index)
 			switch captureName {
-			case "function":
+			case "function", "lambda":
 				fnNode = c.Node
 			case "name":
 				fnName = c.Node.Content(content)
@@ -134,7 +136,14 @@ func findKotlinFunctions(root *sitter.Node, content []byte) ([]kotlinFunctionInf
 			}
 		}
 
-		if fnNode != nil && fnName != "" && fnBodyNode != nil {
+		if fnNode != nil {
+			if fnName == "" {
+				fnName = "<lambda>"
+			}
+			if fnBodyNode == nil {
+				fnBodyNode = fnNode
+			}
+
 			paramCount = countKotlinParameters(fnNode)
 
 			functions = append(functions, kotlinFunctionInfo{
@@ -168,99 +177,9 @@ func countKotlinParameters(fnNode *sitter.Node) int {
 	return count
 }
 
-func calculateKotlinCyclomatic(node *sitter.Node, content []byte) int {
-	complexity := 1
-	cursor := sitter.NewTreeCursor(node)
-	defer cursor.Close()
-
-	for {
-		n := cursor.CurrentNode()
-		nodeType := n.Type()
-
-		switch nodeType {
-		case "if_expression", "for_statement", "while_statement", "do_while_statement", "catch_block", "when_expression":
-			complexity++
-		case "when_entry":
-			complexity++
-		case "binary_expression":
-			for i := 0; i < int(n.ChildCount()); i++ {
-				child := n.Child(i)
-				text := child.Content(content)
-				if text == "&&" || text == "||" {
-					complexity++
-				}
-			}
-		case "call_expression":
-			text := n.Content(content)
-			if strings.Contains(text, ".let") || strings.Contains(text, ".run") || strings.Contains(text, ".apply") || strings.Contains(text, ".also") {
-				complexity++
-			}
-		case "navigation_expression", "safe_navigation_expression":
-			complexity++
-			if nodeType == "safe_navigation_expression" {
-				complexity++
-			} else if nodeType == "navigation_expression" {
-				for i := 0; i < int(n.ChildCount()); i++ {
-					if n.Child(i).Type() == "safe_navigation_operator" {
-						complexity++
-						break
-					}
-				}
-			}
-		case "elvis_expression":
-			complexity++
-		case "lambda_literal":
-			complexity++
-		}
-
-		if cursor.GoToFirstChild() {
-			continue
-		}
-		if cursor.GoToNextSibling() {
-			continue
-		}
-		for cursor.GoToParent() {
-			if cursor.GoToNextSibling() {
-				goto NextSibling
-			}
-		}
-		break
-	NextSibling:
-	}
-
-	return complexity
-}
-
-func calculateKotlinCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		nodeType := n.Type()
-		switch nodeType {
-		case "if_expression", "when_expression", "while_statement", "for_statement", "do_while_statement", "catch_block":
-			complexity += 2
-		case "binary_expression":
-			for i := 0; i < int(n.ChildCount()); i++ {
-				child := n.Child(i)
-				text := child.Content(content)
-				if text == "&&" || text == "||" {
-					complexity += 1
-				}
-			}
-		case "call_expression":
-			text := n.Content(content)
-			if strings.Contains(text, ".let") || strings.Contains(text, ".run") || strings.Contains(text, ".apply") || strings.Contains(text, ".also") {
-				complexity += 1
-			}
-		}
-	})
-
-	return complexity
-}
-
-func calculateKotlinNesting(node *sitter.Node) int {
-	maxDepth := 0
-	var visit func(*sitter.Node, int)
+func mapKotlinNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
+	var visit func(n *sitter.Node, depth int)
 	visit = func(n *sitter.Node, depth int) {
 		if n == nil {
 			return
@@ -268,12 +187,45 @@ func calculateKotlinNesting(node *sitter.Node) int {
 
 		newDepth := depth
 		t := n.Type()
+
 		switch t {
-		case "if_expression", "for_statement", "while_statement", "do_while_statement", "when_expression", "catch_block":
+		case "if_expression", "when_entry", "catch_block", "elvis_expression":
+			nodes = append(nodes, Node{Type: Branch, Depth: depth})
 			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
+		case "when_expression":
+			nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+			newDepth++
+		case "for_statement", "while_statement", "do_while_statement":
+			nodes = append(nodes, Node{Type: Loop, Depth: depth})
+			newDepth++
+		case "binary_expression":
+			for i := 0; i < int(n.ChildCount()); i++ {
+				child := n.Child(i)
+				text := child.Content(content)
+				if text == "&&" || text == "||" {
+					nodes = append(nodes, Node{Type: Operator, Depth: depth})
+				}
 			}
+		case "call_expression":
+			text := n.Content(content)
+			if strings.Contains(text, ".let") || strings.Contains(text, ".run") || strings.Contains(text, ".apply") || strings.Contains(text, ".also") {
+				nodes = append(nodes, Node{Type: Branch, Depth: depth})
+				newDepth++
+			}
+		case "navigation_expression", "safe_navigation_expression":
+			if t == "safe_navigation_expression" {
+				nodes = append(nodes, Node{Type: Branch, Depth: depth})
+			} else if t == "navigation_expression" {
+				for i := 0; i < int(n.ChildCount()); i++ {
+					if n.Child(i).Type() == "safe_navigation_operator" {
+						nodes = append(nodes, Node{Type: Branch, Depth: depth})
+						break
+					}
+				}
+			}
+		case "lambda_literal":
+			nodes = append(nodes, Node{Type: Closure, Depth: depth})
+			newDepth++
 		}
 
 		for i := 0; i < int(n.ChildCount()); i++ {
@@ -282,8 +234,10 @@ func calculateKotlinNesting(node *sitter.Node) int {
 	}
 
 	visit(node, 0)
-	return maxDepth
+	return nodes
 }
+
+
 
 func estimateKotlinTechnicalDebt(cyclomatic, cognitive, loc int) int {
 	baseMinutes := 5

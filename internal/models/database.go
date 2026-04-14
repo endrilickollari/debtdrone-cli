@@ -17,6 +17,7 @@ type User struct {
 	TypeOfLogin            string     `json:"type_of_login" db:"type_of_login"`
 	ProviderID             *string    `json:"provider_id" db:"provider_id"`
 	ProviderName           *string    `json:"provider_name" db:"provider_name"`
+	AuthProviders          []string   `json:"auth_providers" db:"auth_providers"`
 	ProviderAccessToken    *string    `json:"-" db:"provider_access_token"`
 	ProviderRefreshToken   *string    `json:"-" db:"provider_refresh_token"`
 	ProviderTokenExpiresAt *time.Time `json:"-" db:"provider_token_expires_at"`
@@ -49,39 +50,47 @@ type PendingRegistration struct {
 }
 
 type UserConfiguration struct {
-	ID                        uuid.UUID  `json:"id" db:"id"`
-	UserID                    uuid.UUID  `json:"user_id" db:"user_id"`
-	OrganizationName          string     `json:"organization_name" db:"organization_name"`
-	OrganizationURL           *string    `json:"organization_url" db:"organization_url"`
-	PlatformType              string     `json:"platform_type" db:"platform_type"`
-	IsConnected               bool       `json:"is_connected" db:"is_connected"`
-	ConnectedAt               *time.Time `json:"connected_at" db:"connected_at"`
-	AccessTokenEncrypted      *string    `json:"-" db:"access_token_encrypted"`
-	RefreshTokenEncrypted     *string    `json:"-" db:"refresh_token_encrypted"`
-	TokenExpiresAt            *time.Time `json:"token_expires_at" db:"token_expires_at"`
-	TokenScopes               []string   `json:"token_scopes" db:"token_scopes"`
-	AutoSyncEnabled           bool       `json:"auto_sync_enabled" db:"auto_sync_enabled"`
-	SyncFrequencyMinutes      int        `json:"sync_frequency_minutes" db:"sync_frequency_minutes"`
-	LastSyncAt                *time.Time `json:"last_sync_at" db:"last_sync_at"`
-	NextSyncAt                *time.Time `json:"next_sync_at" db:"next_sync_at"`
-	RepositoryFilters         *string    `json:"repository_filters" db:"repository_filters"`
-	ExcludedRepositories      []string   `json:"excluded_repositories" db:"excluded_repositories"`
-	IncludedRepositories      []string   `json:"included_repositories" db:"included_repositories"`
-	AnalysisDepth             string     `json:"analysis_depth" db:"analysis_depth"`
-	ComplexityThreshold       int        `json:"complexity_threshold" db:"complexity_threshold"`
-	DuplicationThreshold      int        `json:"duplication_threshold" db:"duplication_threshold"`
-	SecurityScanEnabled       bool       `json:"security_scan_enabled" db:"security_scan_enabled"`
-	CoverageAnalysisEnabled   bool       `json:"coverage_analysis_enabled" db:"coverage_analysis_enabled"`
-	EmailNotificationsEnabled bool       `json:"email_notifications_enabled" db:"email_notifications_enabled"`
-	SlackWebhookURLEncrypted  *string    `json:"-" db:"slack_webhook_url_encrypted"`
-	NotificationPreferences   *string    `json:"notification_preferences" db:"notification_preferences"`
-	CreatedAt                 time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt                 time.Time  `json:"updated_at" db:"updated_at"`
+	ID                            uuid.UUID  `json:"id" db:"id"`
+	UserID                        uuid.UUID  `json:"user_id" db:"user_id"`
+	OrganizationName              string     `json:"organization_name" db:"organization_name"`
+	OrganizationURL               *string    `json:"organization_url" db:"organization_url"`
+	PlatformType                  string     `json:"platform_type" db:"platform_type"`
+	OrganizationID                *uuid.UUID `json:"organization_id" db:"organization_id"`
+	IsConnected                   bool       `json:"is_connected" db:"is_connected"`
+	ConnectedAt                   *time.Time `json:"connected_at" db:"connected_at"`
+	AccessTokenEncrypted          *string    `json:"-" db:"access_token_encrypted"`
+	RefreshTokenEncrypted         *string    `json:"-" db:"refresh_token_encrypted"`
+	TokenExpiresAt                *time.Time `json:"token_expires_at" db:"token_expires_at"`
+	TokenScopes                   []string   `json:"token_scopes" db:"token_scopes"`
+	AutoSyncEnabled               bool       `json:"auto_sync_enabled" db:"auto_sync_enabled"`
+	SyncFrequencyMinutes          int        `json:"sync_frequency_minutes" db:"sync_frequency_minutes"`
+	LastSyncAt                    *time.Time `json:"last_sync_at" db:"last_sync_at"`
+	NextSyncAt                    *time.Time `json:"next_sync_at" db:"next_sync_at"`
+	RepositoryFilters             *string    `json:"repository_filters" db:"repository_filters"`
+	ExcludedRepositories          []string   `json:"excluded_repositories" db:"excluded_repositories"`
+	IncludedRepositories          []string   `json:"included_repositories" db:"included_repositories"`
+	AnalysisDepth                 string     `json:"analysis_depth" db:"analysis_depth"`
+	ComplexityThreshold           int        `json:"complexity_threshold" db:"complexity_threshold"`
+	CyclomaticComplexityThreshold int        `json:"cyclomatic_complexity_threshold" db:"cyclomatic_complexity_threshold"`
+	CognitiveComplexityThreshold  int        `json:"cognitive_complexity_threshold" db:"cognitive_complexity_threshold"`
+	DebtCostPerComplexityPoint    int        `json:"debt_cost_per_complexity_point" db:"debt_cost_per_complexity_point"`
+	DuplicationThreshold          int        `json:"duplication_threshold" db:"duplication_threshold"`
+	SecurityScanEnabled           bool       `json:"security_scan_enabled" db:"security_scan_enabled"`
+	CoverageAnalysisEnabled       bool       `json:"coverage_analysis_enabled" db:"coverage_analysis_enabled"`
+	EmailNotificationsEnabled     bool       `json:"email_notifications_enabled" db:"email_notifications_enabled"`
+	SlackWebhookURLEncrypted      *string    `json:"-" db:"slack_webhook_url_encrypted"`
+	NotificationPreferences       *string    `json:"notification_preferences" db:"notification_preferences"`
+	Metadata                      *string    `json:"metadata" db:"metadata"`
+	AnalysisMode                  string     `json:"analysis_mode" db:"analysis_mode"`
+	MaskedAccessToken             string     `json:"access_token,omitempty" db:"-"`
+	CreatedAt                     time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt                     time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type UserRepository struct {
 	ID                            uuid.UUID  `json:"id" db:"id"`
 	UserID                        uuid.UUID  `json:"user_id" db:"user_id"`
+	OrganizationID                uuid.UUID  `json:"organization_id" db:"organization_id"`
 	UserConfigID                  uuid.UUID  `json:"user_config_id" db:"user_config_id"`
 	Name                          string     `json:"name" db:"name"`
 	FullName                      string     `json:"full_name" db:"full_name"`
@@ -108,36 +117,41 @@ type UserRepository struct {
 	LatestTestCoveragePercentage  float64    `json:"latest_test_coverage_percentage" db:"latest_test_coverage_percentage"`
 	LatestDuplicationPercentage   float64    `json:"latest_duplication_percentage" db:"latest_duplication_percentage"`
 	LatestComplexityScore         float64    `json:"latest_complexity_score" db:"latest_complexity_score"`
+	LastAnalyzedCommitHash        *string    `json:"last_analyzed_commit_hash" db:"last_analyzed_commit_hash"`
+	RecalibrationStatus           string     `json:"recalibration_status" db:"recalibration_status"`
 	CreatedAt                     time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt                     time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type AnalysisRun struct {
-	ID                      uuid.UUID  `json:"id" db:"id"`
-	UserID                  uuid.UUID  `json:"user_id" db:"user_id"`
-	RepositoryID            uuid.UUID  `json:"repository_id" db:"repository_id"`
-	UserConfigID            uuid.UUID  `json:"user_config_id" db:"user_config_id"`
-	RunType                 string     `json:"run_type" db:"run_type"`
-	TriggerSource           *string    `json:"trigger_source" db:"trigger_source"`
-	StartedAt               time.Time  `json:"started_at" db:"started_at"`
-	CompletedAt             *time.Time `json:"completed_at" db:"completed_at"`
-	DurationSeconds         *int       `json:"duration_seconds" db:"duration_seconds"`
-	Status                  string     `json:"status" db:"status"`
-	AnalysisConfig          *string    `json:"analysis_config" db:"analysis_config"`
-	TotalIssuesFound        int        `json:"total_issues_found" db:"total_issues_found"`
-	CriticalIssuesCount     int        `json:"critical_issues_count" db:"critical_issues_count"`
-	HighIssuesCount         int        `json:"high_issues_count" db:"high_issues_count"`
-	MediumIssuesCount       int        `json:"medium_issues_count" db:"medium_issues_count"`
-	LowIssuesCount          int        `json:"low_issues_count" db:"low_issues_count"`
-	TotalTechnicalDebtHours float64    `json:"total_technical_debt_hours" db:"total_technical_debt_hours"`
-	TestCoveragePercentage  float64    `json:"test_coverage_percentage" db:"test_coverage_percentage"`
-	DuplicationPercentage   float64    `json:"duplication_percentage" db:"duplication_percentage"`
-	ErrorMessage            *string    `json:"error_message" db:"error_message"`
-	ErrorDetails            *string    `json:"error_details" db:"error_details"`
-	RepositoryName          *string    `json:"repository_name,omitempty" db:"-"`
-	RepositoryFullName      *string    `json:"repository_full_name,omitempty" db:"-"`
-	CreatedAt               time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt               time.Time  `json:"updated_at" db:"updated_at"`
+	ID                      uuid.UUID              `json:"id" db:"id"`
+	UserID                  uuid.UUID              `json:"user_id" db:"user_id"`
+	RepositoryID            uuid.UUID              `json:"repository_id" db:"repository_id"`
+	UserConfigID            uuid.UUID              `json:"user_config_id" db:"user_config_id"`
+	RunType                 string                 `json:"run_type" db:"run_type"`
+	TriggerSource           *string                `json:"trigger_source" db:"trigger_source"`
+	StartedAt               time.Time              `json:"started_at" db:"started_at"`
+	CompletedAt             *time.Time             `json:"completed_at" db:"completed_at"`
+	DurationSeconds         *int                   `json:"duration_seconds" db:"duration_seconds"`
+	Status                  string                 `json:"status" db:"status"`
+	AnalysisConfig          *string                `json:"analysis_config" db:"analysis_config"`
+	TotalIssuesFound        int                    `json:"total_issues_found" db:"total_issues_found"`
+	CriticalIssuesCount     int                    `json:"critical_issues_count" db:"critical_issues_count"`
+	HighIssuesCount         int                    `json:"high_issues_count" db:"high_issues_count"`
+	MediumIssuesCount       int                    `json:"medium_issues_count" db:"medium_issues_count"`
+	LowIssuesCount          int                    `json:"low_issues_count" db:"low_issues_count"`
+	TotalTechnicalDebtHours float64                `json:"total_technical_debt_hours" db:"total_technical_debt_hours"`
+	TestCoveragePercentage  float64                `json:"test_coverage_percentage" db:"test_coverage_percentage"`
+	DuplicationPercentage   float64                `json:"duplication_percentage" db:"duplication_percentage"`
+	ErrorMessage            *string                `json:"error_message" db:"error_message"`
+	ErrorDetails            *string                `json:"error_details" db:"error_details"`
+	CommitHash              *string                `json:"commit_hash" db:"commit_hash"`
+	Branch                  *string                `json:"branch" db:"branch"`
+	RepositoryName          *string                `json:"repository_name,omitempty" db:"-"`
+	RepositoryFullName      *string                `json:"repository_full_name,omitempty" db:"-"`
+	Delta                   map[string]interface{} `json:"delta,omitempty" db:"-"`
+	CreatedAt               time.Time              `json:"created_at" db:"created_at"`
+	UpdatedAt               time.Time              `json:"updated_at" db:"updated_at"`
 }
 
 type TechnicalDebtIssue struct {
@@ -167,10 +181,18 @@ type TechnicalDebtIssue struct {
 	Comments           []string   `json:"comments" db:"comments"`
 	CodeSnippet        *string    `json:"code_snippet" db:"code_snippet"`
 	SurroundingContext *string    `json:"surrounding_context" db:"surrounding_context"`
-	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at" db:"updated_at"`
-	RepositoryName     string     `json:"repository_name,omitempty" db:"-"`
-	RepositoryFullName string     `json:"repository_full_name,omitempty" db:"-"`
+	// External integration link tracking (Link & Sync)
+	ExternalID       *string `json:"external_id" db:"external_id"`             // e.g., "PROJ-123" or Trello card ID
+	ExternalPlatform *string `json:"external_platform" db:"external_platform"` // "jira" or "trello"
+	ExternalURL      *string `json:"external_url" db:"external_url"`           // Direct link to the ticket
+	// Sync-to-Truth Identity
+	FingerprintHash    string    `json:"fingerprint_hash" db:"fingerprint_hash"`     // SHA256 stable identity
+	JiraSyncStatus     string    `json:"jira_sync_status" db:"jira_sync_status"`     // 'pending', 'synced', 'failed'
+	TrelloSyncStatus   string    `json:"trello_sync_status" db:"trello_sync_status"` // 'pending', 'synced', 'failed'
+	CreatedAt          time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
+	RepositoryName     string    `json:"repository_name,omitempty" db:"-"`
+	RepositoryFullName string    `json:"repository_full_name,omitempty" db:"-"`
 }
 
 type IssueComment struct {

@@ -48,13 +48,12 @@ func (a *TypeScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateTypeScriptCyclomatic(fn.node, content)
-		cognitive := calculateTypeScriptCognitive(fn.node, content)
-		nesting := calculateTypeScriptNesting(fn.node)
+		nodes := mapTypeScriptNodes(fn.node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                   uuid.New(),
@@ -90,23 +89,26 @@ func findTypeScriptFunctions(root *sitter.Node, content []byte) ([]tsFunctionInf
 
 	queryStr := `
 		(function_declaration
-			name: (identifier) @name
-			parameters: (formal_parameters) @params
+			name: (identifier)? @name
+			parameters: (formal_parameters)? @params
+			body: (_) @body
+		) @function
+
+		(function_expression
+			name: (identifier)? @name
+			parameters: (formal_parameters)? @params
 			body: (_) @body
 		) @function
 
 		(method_definition
 			name: (property_identifier) @name
-			parameters: (formal_parameters) @params
+			parameters: (formal_parameters)? @params
 			body: (_) @body
 		) @method
 
-		(variable_declarator
-			name: (identifier) @name
-			value: (arrow_function
-				parameters: (formal_parameters) @params
-				body: (_) @body
-			)
+		(arrow_function
+			parameters: (_)? @params
+			body: (_) @body
 		) @arrow
 	`
 
@@ -148,6 +150,22 @@ func findTypeScriptFunctions(root *sitter.Node, content []byte) ([]tsFunctionInf
 		}
 
 		if fnNode != nil && fnBodyNode != nil {
+			if fnName == "" {
+				parent := fnNode.Parent()
+				if parent != nil && parent.Type() == "variable_declarator" {
+					for i := 0; i < int(parent.ChildCount()); i++ {
+						child := parent.Child(i)
+						if child.Type() == "identifier" {
+							fnName = child.Content(content)
+							break
+						}
+					}
+				}
+				if fnName == "" {
+					fnName = "<anonymous>"
+				}
+			}
+
 			paramCount := countTypeScriptParameters(paramNode)
 
 			functions = append(functions, tsFunctionInfo{
@@ -180,112 +198,36 @@ func countTypeScriptParameters(paramNode *sitter.Node) int {
 	return count
 }
 
-func calculateTypeScriptCyclomatic(node *sitter.Node, content []byte) int {
-	complexity := 1
-	cursor := sitter.NewTreeCursor(node)
-	defer cursor.Close()
-
-	for {
-		n := cursor.CurrentNode()
-
-		if n.IsNamed() {
-			nodeType := n.Type()
-			switch nodeType {
-			case "if_statement":
-				complexity++
-			case "for_statement", "for_in_statement", "for_of_statement":
-				complexity++
-			case "while_statement", "do_statement":
-				complexity++
-			case "switch_case":
-				complexity++
-			case "catch_clause":
-				complexity++
-			case "binary_expression":
-				count := int(n.ChildCount())
-				for i := 0; i < count; i++ {
-					child := n.Child(i)
-					op := child.Content(content)
-					if op == "&&" || op == "||" || op == "??" {
-						complexity++
-					}
-				}
-			case "ternary_expression":
-				complexity++
-			case "assignment_expression":
-				count := int(n.ChildCount())
-				for i := 0; i < count; i++ {
-					child := n.Child(i)
-					op := child.Content(content)
-					if op == "??=" || op == "&&=" || op == "||=" {
-						complexity++
-					}
-				}
-			}
-		}
-
-		if cursor.GoToFirstChild() {
-			continue
-		}
-		if cursor.GoToNextSibling() {
-			continue
-		}
-		for cursor.GoToParent() {
-			if cursor.GoToNextSibling() {
-				goto NextSibling
-			}
-		}
-		break
-	NextSibling:
-	}
-
-	return complexity
-}
-
-func calculateTypeScriptCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		if n.IsNamed() {
-			nodeType := n.Type()
-			switch nodeType {
-			case "if_statement", "for_statement", "for_in_statement", "for_of_statement",
-				"while_statement", "do_statement", "switch_case", "catch_clause":
-				complexity += 2
-			case "ternary_expression":
-				complexity += 1
-			case "binary_expression":
-
-				for i := 0; i < int(n.ChildCount()); i++ {
-					child := n.Child(i)
-					op := child.Content(content)
-					if op == "&&" || op == "||" || op == "??" {
-						complexity += 1
-						break
-					}
-				}
-			}
-		}
-	})
-
-	return complexity
-}
-
-func calculateTypeScriptNesting(node *sitter.Node) int {
-	maxDepth := 0
-	var visit func(*sitter.Node, int)
+func mapTypeScriptNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
+	var visit func(n *sitter.Node, depth int)
 	visit = func(n *sitter.Node, depth int) {
 		if n == nil {
 			return
 		}
 
 		newDepth := depth
-		t := n.Type()
-		switch t {
-		case "if_statement", "for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
-			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
+		if n.IsNamed() {
+			t := n.Type()
+			switch t {
+			case "if_statement", "switch_case", "catch_clause", "ternary_expression":
+				nodes = append(nodes, Node{Type: Branch, Depth: depth})
+				newDepth++
+			case "switch_statement":
+				nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+				newDepth++
+			case "for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement":
+				nodes = append(nodes, Node{Type: Loop, Depth: depth})
+				newDepth++
+			case "binary_expression", "assignment_expression":
+				for i := 0; i < int(n.ChildCount()); i++ {
+					child := n.Child(i)
+					op := child.Content(content)
+					if op == "&&" || op == "||" || op == "??" || op == "??=" || op == "&&=" || op == "||=" {
+						nodes = append(nodes, Node{Type: Operator, Depth: depth})
+						break
+					}
+				}
 			}
 		}
 
@@ -295,5 +237,5 @@ func calculateTypeScriptNesting(node *sitter.Node) int {
 	}
 
 	visit(node, 0)
-	return maxDepth
+	return nodes
 }

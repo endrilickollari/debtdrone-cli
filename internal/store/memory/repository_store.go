@@ -2,7 +2,6 @@ package memory
 
 import (
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store"
 )
 
 type InMemoryRepositoryStore struct {
@@ -61,10 +60,29 @@ func (s *InMemoryRepositoryStore) MarkAsInaccessible(id string) error {
 	return nil
 }
 
-func (s *InMemoryRepositoryStore) GetUserRepositoriesPaginated(ctx interface{}, userID string, page, pageSize int) ([]*models.UserRepository, int64, error) {
-	return []*models.UserRepository{}, 0, nil
+func (s *InMemoryRepositoryStore) GetUserRepositoriesPaginated(ctx interface{}, userID string, page, pageSize int, sortBy, sortOrder string, filters interface{}) ([]*models.UserRepository, int64, error) {
+	// Simple implementation for memory store, ignoring sort for now
+	repos, err := s.ListByUserID(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return repos, int64(len(repos)), nil
 }
 
-func (s *InMemoryRepositoryStore) GetRepositoryStats(ctx interface{}, userID string) (*store.RepositoryStats, error) {
-	return &store.RepositoryStats{}, nil
+func (s *InMemoryRepositoryStore) GetRepositoryStats(ctx interface{}, userID string) (interface{}, error) {
+	return map[string]interface{}{}, nil
+}
+
+func (s *InMemoryRepositoryStore) UpdateMetrics(id string, debt float64, coverage float64, complexity float64, critical, high, medium, low int) error {
+	return nil
+}
+
+func (s *InMemoryRepositoryStore) UpdateLastAnalyzedCommitHash(id string, commitHash string) error {
+	for i, repo := range s.Repos {
+		if repo.ID.String() == id {
+			s.Repos[i].LastAnalyzedCommitHash = &commitHash
+			return nil
+		}
+	}
+	return nil
 }
