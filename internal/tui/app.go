@@ -1,10 +1,8 @@
 package tui
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,12 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store/memory"
 	"github.com/endrilickollari/debtdrone-cli/internal/update"
 	"github.com/google/uuid"
 )
@@ -28,16 +21,26 @@ var (
 	date    = "unknown"
 )
 
-var spinnerChars = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
 type state int
 
 const (
 	stateMenu state = iota
 	stateScanning
 	stateResults
+	stateHistory
+	stateConfig
 	stateUpdating
 	stateHelp
+)
+
+type updatePhase int
+
+const (
+	updateChecking updatePhase = iota
+	updatePrompt
+	updateInstalling
+	updateSuccess
+	updateError
 )
 
 var allCommands = []struct {
@@ -53,16 +56,36 @@ var allCommands = []struct {
 }
 
 type model struct {
-	state              state
-	input              string
-	cursorPos          int
-	issues             []models.TechnicalDebtIssue
-	scanPath           string
-	err                error
-	scanning           bool
-	selectedIssue      int
-	scrollOffset       int
-	updateInfo         *update.UpdateInfo
+	state     state
+	input     string
+	cursorPos int
+	issues    []models.TechnicalDebtIssue
+	scanPath  string
+	err       error
+	scanning  bool
+
+	list   issueList
+	detail issueViewport
+
+	historyEntries []historyEntry
+	historyCursor  int
+	historyOffset  int
+	historyDetail  issueViewport
+
+	configItems       []configItem
+	configCursor      int
+	configOffset      int
+	configCurrentMode configMode
+	configEditBuffer  string
+
+	updateStatus updatePhase
+	updateInfo   *update.UpdateInfo
+	updateErr    error
+
+	scanTask     string
+	scanProgress float64
+	scanChan     chan tea.Msg
+
 	mu                 sync.Mutex
 	spinnerFrame       int
 	width              int
@@ -74,15 +97,36 @@ type model struct {
 func initialModel() *model {
 	return &model{
 		state:              stateMenu,
-		input:              "",
-		cursorPos:          0,
 		scanning:           false,
-		scrollOffset:       0,
 		spinnerFrame:       0,
 		width:              120,
 		height:             40,
 		selectedSuggestion: -1,
+		configItems:        defaultConfigItems(),
+		scanChan:           make(chan tea.Msg, 10),
 	}
+}
+
+func (m *model) listenForScanProgress() tea.Cmd {
+	return func() tea.Msg {
+		return <-m.scanChan
+	}
+}
+
+func (m *model) getConfigValue(key string) string {
+	for _, item := range m.configItems {
+		if item.Key == key {
+			return item.Value
+		}
+	}
+	return ""
+}
+
+func RunTUI() error {
+	m := initialModel()
+	p := tea.NewProgram(m)
+	_, err := p.Run()
+	return err
 }
 
 type tickMsg struct{}
@@ -96,13 +140,42 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		listH, detailH := splitHeight(m.height)
+		if m.state == stateResults {
+			m.list.height = listH
+			m.list.width = m.width
+			m.detail.height = detailH
+			m.detail.width = m.width - 4
+		}
+		if m.state == stateHistory {
+			m.historyDetail.height = detailH
+			m.historyDetail.width = m.width - 4
+			if len(m.historyEntries) > 0 {
+				m.historyDetail.setContent(
+					formatHistoryDetail(m.historyEntries[m.historyCursor], m.historyDetail.width),
+				)
+			}
+		}
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+
 	case tickMsg:
-		if m.state == stateScanning {
+		switch {
+		case m.state == stateScanning:
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerChars)
-			return m, tea.Tick(time.Second/10, func(t time.Time) tea.Msg { return tickMsg{} })
+			return m, tickCmd()
+		case m.state == stateUpdating &&
+			(m.updateStatus == updateChecking || m.updateStatus == updateInstalling):
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerChars)
+			return m, tickCmd()
 		}
+
+	case scanProgressMsg:
+		m.scanTask = msg.Task
+		m.scanProgress = msg.Progress
+		return m, m.listenForScanProgress()
+
 	case scanCompleteMsg:
 		m.mu.Lock()
 		m.scanning = false
@@ -112,20 +185,72 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.issues = msg.issues
 			m.state = stateResults
-			m.selectedIssue = 0
-			m.scrollOffset = 0
+
+			listH, detailH := splitHeight(m.height)
+			m.list = newIssueList(msg.issues, m.width, listH)
+
+			// If JSON output is requested, use the detail viewport as a full-screen scrollable area
+			if m.getConfigValue("Output Format") == "json" {
+				jsonData, _ := json.MarshalIndent(msg.issues, "", "  ")
+				m.detail = issueViewport{
+					height: m.height - 4, // More space for full-screen JSON
+					width:  m.width - 4,
+				}
+				m.detail.setContent(string(jsonData))
+			} else {
+				m.detail = issueViewport{
+					height: detailH,
+					width:  m.width - 4,
+				}
+				m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+			}
+
+			now := time.Now()
+			run := models.AnalysisRun{
+				ID:                  uuid.New(),
+				StartedAt:           now,
+				Status:              "completed",
+				TotalIssuesFound:    len(msg.issues),
+				CriticalIssuesCount: countBySeverity(msg.issues, "critical"),
+				HighIssuesCount:     countBySeverity(msg.issues, "high"),
+				MediumIssuesCount:   countBySeverity(msg.issues, "medium"),
+				LowIssuesCount:      countBySeverity(msg.issues, "low"),
+			}
+			run.CompletedAt = &now
+			run.RepositoryName = &msg.path
+			m.historyEntries = append([]historyEntry{{
+				run:    run,
+				path:   msg.path,
+				issues: msg.issues,
+			}}, m.historyEntries...)
 		}
 		m.mu.Unlock()
 		return m, nil
+
 	case checkUpdateMsg:
 		m.mu.Lock()
 		m.scanning = false
 		if msg.err != nil {
-			m.err = msg.err
+			m.updateErr = msg.err
+			m.updateStatus = updateError
+		} else if msg.info == nil || !msg.info.Available {
+			m.updateInfo = msg.info
+			m.updateStatus = updateSuccess
 		} else {
 			m.updateInfo = msg.info
+			m.updateStatus = updatePrompt
 		}
-		m.state = stateUpdating
+		m.mu.Unlock()
+		return m, nil
+
+	case updateCompleteMsg:
+		m.mu.Lock()
+		if msg.err != nil {
+			m.updateErr = msg.err
+			m.updateStatus = updateError
+		} else {
+			m.updateStatus = updateSuccess
+		}
 		m.mu.Unlock()
 		return m, nil
 	}
@@ -238,25 +363,49 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case stateResults:
+		isJSON := m.getConfigValue("Output Format") == "json"
+
+		updateDetail := func() {
+			if !isJSON {
+				m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+			}
+		}
+
 		switch str {
 		case "q", "esc":
 			m.state = stateMenu
 			m.input = ""
 			m.cursorPos = 0
-			m.selectedIssue = 0
-			m.scrollOffset = 0
 		case "j", "down":
-			m.scrollDown(1)
+			if isJSON {
+				m.detail.scrollDown(1)
+			} else {
+				m.list.moveDown()
+				updateDetail()
+			}
 		case "k", "up":
-			m.scrollUp(1)
+			if isJSON {
+				m.detail.scrollUp(1)
+			} else {
+				m.list.moveUp()
+				updateDetail()
+			}
 		case "pgdn":
-			m.scrollDown(20)
+			m.list.pageDown()
+			updateDetail()
 		case "pgup":
-			m.scrollUp(20)
+			m.list.pageUp()
+			updateDetail()
 		case "g":
-			m.scrollTop()
+			m.list.goTop()
+			updateDetail()
 		case "G":
-			m.scrollBottom()
+			m.list.goBottom()
+			updateDetail()
+		case "J":
+			m.detail.scrollDown(3)
+		case "K":
+			m.detail.scrollUp(3)
 		case "r":
 			m.state = stateMenu
 			m.input = ""
@@ -264,13 +413,192 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case stateHistory:
+		updateHistoryDetail := func() {
+			if len(m.historyEntries) == 0 {
+				return
+			}
+			m.historyDetail.setContent(
+				formatHistoryDetail(m.historyEntries[m.historyCursor], m.historyDetail.width),
+			)
+		}
+
+		historyListH, _ := splitHeight(m.height)
+
+		switch str {
+		case "q", "esc":
+			m.state = stateMenu
+			m.input = ""
+			m.cursorPos = 0
+		case "j", "down":
+			if m.historyCursor < len(m.historyEntries)-1 {
+				m.historyCursor++
+				if m.historyCursor >= m.historyOffset+historyListH {
+					m.historyOffset++
+				}
+				updateHistoryDetail()
+			}
+		case "k", "up":
+			if m.historyCursor > 0 {
+				m.historyCursor--
+				if m.historyCursor < m.historyOffset {
+					m.historyOffset--
+				}
+				updateHistoryDetail()
+			}
+		case "g":
+			m.historyCursor = 0
+			m.historyOffset = 0
+			updateHistoryDetail()
+		case "G":
+			if len(m.historyEntries) > 0 {
+				m.historyCursor = len(m.historyEntries) - 1
+				m.historyOffset = max(0, m.historyCursor-historyListH+1)
+				updateHistoryDetail()
+			}
+		case "J":
+			m.historyDetail.scrollDown(3)
+		case "K":
+			m.historyDetail.scrollUp(3)
+		case "enter":
+			if len(m.historyEntries) == 0 {
+				break
+			}
+			entry := m.historyEntries[m.historyCursor]
+			m.issues = entry.issues
+			m.scanPath = entry.path
+			m.err = nil
+			listH, detailH := splitHeight(m.height)
+			m.list = newIssueList(entry.issues, m.width, listH)
+			m.detail = issueViewport{height: detailH, width: m.width - 4}
+			m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+			m.state = stateResults
+		}
+		return m, nil
+
+	case stateConfig:
+		switch m.configCurrentMode {
+		case configNavigating:
+			visibleRows := max(m.height-8, 4)
+			switch str {
+			case "j", "down":
+				if m.configCursor < len(m.configItems)-1 {
+					m.configCursor++
+					if m.configCursor >= m.configOffset+visibleRows {
+						m.configOffset++
+					}
+				}
+			case "k", "up":
+				if m.configCursor > 0 {
+					m.configCursor--
+					if m.configCursor < m.configOffset {
+						m.configOffset--
+					}
+				}
+			case "g":
+				m.configCursor = 0
+				m.configOffset = 0
+			case "G":
+				m.configCursor = len(m.configItems) - 1
+				m.configOffset = max(0, m.configCursor-visibleRows+1)
+			case "q", "esc":
+				m.state = stateMenu
+				m.input = ""
+				m.cursorPos = 0
+			case "enter", " ":
+				item := &m.configItems[m.configCursor]
+				if item.Type == "bool" {
+					if item.Value == "true" {
+						item.Value = "false"
+					} else {
+						item.Value = "true"
+					}
+				} else if item.IsOption {
+					// Cycle through options
+					currentIndex := -1
+					for i, opt := range item.Options {
+						if opt == item.Value {
+							currentIndex = i
+							break
+						}
+					}
+					nextIndex := (currentIndex + 1) % len(item.Options)
+					item.Value = item.Options[nextIndex]
+				} else {
+					m.configEditBuffer = item.Value
+					m.configCurrentMode = configEditing
+				}
+			case "right":
+				item := &m.configItems[m.configCursor]
+				if item.IsOption {
+					currentIndex := -1
+					for i, opt := range item.Options {
+						if opt == item.Value {
+							currentIndex = i
+							break
+						}
+					}
+					nextIndex := (currentIndex + 1) % len(item.Options)
+					item.Value = item.Options[nextIndex]
+				}
+			case "left":
+				item := &m.configItems[m.configCursor]
+				if item.IsOption {
+					currentIndex := -1
+					for i, opt := range item.Options {
+						if opt == item.Value {
+							currentIndex = i
+							break
+						}
+					}
+					prevIndex := (currentIndex - 1 + len(item.Options)) % len(item.Options)
+					item.Value = item.Options[prevIndex]
+				}
+			}
+
+		case configEditing:
+			switch str {
+			case "esc":
+				m.configEditBuffer = ""
+				m.configCurrentMode = configNavigating
+			case "enter":
+				m.configItems[m.configCursor].Value = m.configEditBuffer
+				m.configEditBuffer = ""
+				m.configCurrentMode = configNavigating
+			case "backspace":
+				runes := []rune(m.configEditBuffer)
+				if len(runes) > 0 {
+					m.configEditBuffer = string(runes[:len(runes)-1])
+				}
+			default:
+				if isEditableChar(str) {
+					m.configEditBuffer += str
+				}
+			}
+		}
+		return m, nil
+
 	case stateUpdating:
-		if str == "y" {
-			m.state = stateScanning
-			return m, performUpdateCmd
-		} else if str == "n" {
+		switch m.updateStatus {
+		case updateChecking, updateInstalling:
+			return m, nil
+		case updatePrompt:
+			switch str {
+			case "y":
+				m.updateStatus = updateInstalling
+				m.spinnerFrame = 0
+				return m, tea.Batch(performUpdateCmd, tickCmd())
+			case "n", "q", "esc":
+				m.state = stateMenu
+				m.updateInfo = nil
+				m.updateErr = nil
+			}
+			return m, nil
+		case updateSuccess, updateError:
 			m.state = stateMenu
 			m.updateInfo = nil
+			m.updateErr = nil
+			return m, nil
 		}
 		return m, nil
 
@@ -282,47 +610,6 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-func (m *model) scrollDown(lines int) {
-	if len(m.issues) == 0 {
-		return
-	}
-	maxVisible := 100
-	newOffset := m.scrollOffset + lines
-	if newOffset+maxVisible > len(m.issues) {
-		newOffset = len(m.issues) - maxVisible
-	}
-	if newOffset < 0 {
-		newOffset = 0
-	}
-	m.scrollOffset = newOffset
-}
-
-func (m *model) scrollUp(lines int) {
-	if len(m.issues) == 0 {
-		return
-	}
-	newOffset := m.scrollOffset - lines
-	if newOffset < 0 {
-		newOffset = 0
-	}
-	m.scrollOffset = newOffset
-}
-
-func (m *model) scrollTop() {
-	m.scrollOffset = 0
-}
-
-func (m *model) scrollBottom() {
-	if len(m.issues) == 0 {
-		return
-	}
-	maxVisible := 100
-	m.scrollOffset = len(m.issues) - maxVisible
-	if m.scrollOffset < 0 {
-		m.scrollOffset = 0
-	}
 }
 
 func (m *model) handleCommand() (tea.Model, tea.Cmd) {
@@ -350,20 +637,52 @@ func (m *model) handleCommand() (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("failed to resolve path: %w", err)
 			return m, nil
 		}
+
+		maxComplexity := 15
+		fmt.Sscanf(m.getConfigValue("Max Complexity"), "%d", &maxComplexity)
+		securityScan := m.getConfigValue("Security Scan") == "true"
+
 		m.scanPath = absPath
 		m.scanning = true
+		m.scanTask = "Initializing scan..."
+		m.scanProgress = 0
 		m.state = stateScanning
-		return m, startScan(absPath)
+		return m, tea.Batch(
+			startScan(absPath, maxComplexity, securityScan, m.scanChan),
+			m.listenForScanProgress(),
+		)
 
 	case "/update":
-		m.state = stateUpdating
+		m.updateStatus = updateChecking
+		m.updateErr = nil
+		m.updateInfo = nil
+		m.spinnerFrame = 0
 		m.scanning = true
-		return m, startUpdateCheck
+		m.state = stateUpdating
+		return m, tea.Batch(startUpdateCheck, tickCmd())
 
 	case "/history":
+		m.historyCursor = 0
+		m.historyOffset = 0
+		_, detailH := splitHeight(m.height)
+		m.historyDetail = issueViewport{height: detailH, width: m.width - 4}
+		if len(m.historyEntries) > 0 {
+			m.historyDetail.setContent(
+				formatHistoryDetail(m.historyEntries[0], m.historyDetail.width),
+			)
+		}
+		m.state = stateHistory
 		return m, nil
 
 	case "/config":
+		if len(m.configItems) == 0 {
+			m.configItems = defaultConfigItems()
+		}
+		m.configCursor = 0
+		m.configOffset = 0
+		m.configCurrentMode = configNavigating
+		m.configEditBuffer = ""
+		m.state = stateConfig
 		return m, nil
 
 	case "/help", "/h", "?":
@@ -376,456 +695,4 @@ func (m *model) handleCommand() (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-type scanCompleteMsg struct {
-	path   string
-	issues []models.TechnicalDebtIssue
-	err    error
-}
-
-type checkUpdateMsg struct {
-	info *update.UpdateInfo
-	err  error
-}
-
-func startScan(path string) tea.Cmd {
-	log.SetOutput(io.Discard)
-
-	return func() tea.Msg {
-		complexityStore := memory.NewInMemoryComplexityStore()
-		lineCounter := analyzers.NewLineCounter()
-		complexityAnalyzer := analyzers.NewComplexityAnalyzer(complexityStore)
-
-		analyzersList := []analysis.Analyzer{lineCounter, complexityAnalyzer}
-
-		gitService := git.NewService()
-		repo, err := gitService.OpenLocal(path)
-		if err != nil {
-			log.SetOutput(os.Stderr)
-			return scanCompleteMsg{path: path, err: fmt.Errorf("failed to open repository: %w", err)}
-		}
-
-		ctx := context.Background()
-		ctx = context.WithValue(ctx, "analysisRunID", uuid.New())
-		ctx = context.WithValue(ctx, "repositoryID", uuid.New())
-		ctx = context.WithValue(ctx, "userID", uuid.New())
-		ctx = context.WithValue(ctx, "isCLI", true)
-
-		var allIssues []models.TechnicalDebtIssue
-
-		for _, analyzer := range analyzersList {
-			result, err := analyzer.Analyze(ctx, repo)
-			if err != nil {
-				continue
-			}
-			allIssues = append(allIssues, result.Issues...)
-		}
-
-		log.SetOutput(os.Stderr)
-
-		return scanCompleteMsg{path: path, issues: allIssues}
-	}
-}
-
-func startUpdateCheck() tea.Msg {
-	return func() tea.Msg {
-		ctx := context.Background()
-		info, err := update.CheckForUpdate(ctx, version)
-		if err != nil {
-			return checkUpdateMsg{err: err}
-		}
-		return checkUpdateMsg{info: info}
-	}
-}
-
-func (m *model) View() tea.View {
-	var content string
-
-	switch m.state {
-	case stateMenu:
-		content = m.menuView()
-	case stateScanning:
-		content = m.scanningView()
-	case stateResults:
-		content = m.resultsView()
-	case stateUpdating:
-		content = m.updateView()
-	case stateHelp:
-		content = m.helpView()
-	default:
-		content = ""
-	}
-
-	v := tea.NewView(content)
-	v.AltScreen = true
-	return v
-}
-
-func (m *model) renderInputLine() string {
-	if m.input == "" {
-		return ""
-	}
-	if m.cursorPos >= len(m.input) {
-		return m.input + "█"
-	}
-	return m.input[:m.cursorPos] + "█" + m.input[m.cursorPos:]
-}
-
-func (m *model) menuView() string {
-	const boxWidth = 100
-
-	accentBlue := lipgloss.Color("#4fc3f7")
-	// dimColor := lipgloss.Color("#4a5068")
-	placeholderColor := lipgloss.Color("#3a4060")
-	inputTextColor := lipgloss.Color("#89ddff")
-	hintKeyColor := lipgloss.Color("#c8d0e8")
-	hintSepColor := lipgloss.Color("#3a3f58")
-	hintDescColor := lipgloss.Color("#5a6080")
-	tipBulletColor := lipgloss.Color("#4fc3f7")
-	tipTextColor := lipgloss.Color("#5a6080")
-	// buildLabelColor := lipgloss.Color("#4a5068")
-	// buildValueColor := lipgloss.Color("#4fc3f7")
-	suggestionBg := lipgloss.Color("#1a1d30")
-	suggestionFg := lipgloss.Color("#6a7090")
-	suggestionSelBg := lipgloss.Color("#1e2a40")
-	suggestionSelFg := lipgloss.Color("#4fc3f7")
-	suggestionDescFg := lipgloss.Color("#3a4060")
-	logoColor := lipgloss.Color("#8899bb")
-
-	logoLines := []string{
-		"██████╗ ███████╗██████╗ ████████╗██████╗ ██████╗  ██████╗ ███╗   ██╗███████╗",
-		"██╔══██╗██╔════╝██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔═══██╗████╗  ██║██╔════╝",
-		"██║  ██║█████╗  ██████╔╝   ██║   ██║  ██║██████╔╝██║   ██║██╔██╗ ██║█████╗  ",
-		"██║  ██║██╔══╝  ██╔══██╗   ██║   ██║  ██║██╔══██╗██║   ██║██║╚██╗██║██╔══╝  ",
-		"██████╔╝███████╗██████╔╝   ██║   ██████╔╝██║  ██║╚██████╔╝██║ ╚████║███████╗",
-		"╚═════╝ ╚══════╝╚═════╝    ╚═╝   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝",
-	}
-
-	logoStyle := lipgloss.NewStyle().Foreground(logoColor)
-	var logo strings.Builder
-	for _, line := range logoLines {
-		logo.WriteString(logoStyle.Render(line))
-		logo.WriteString("\n")
-	}
-
-	var inputText string
-	if m.input == "" {
-		inputText = lipgloss.NewStyle().Foreground(placeholderColor).Render(`Ask anything...  "/scan ."  to analyze the current repo`)
-	} else {
-		inputText = lipgloss.NewStyle().Foreground(inputTextColor).Render(m.renderInputLine())
-	}
-
-	// buildLabel := lipgloss.NewStyle().Foreground(buildLabelColor).Bold(true).Render("Build")
-	// buildSep := lipgloss.NewStyle().Foreground(dimColor).Render(" · ")
-	// buildVal := lipgloss.NewStyle().Foreground(buildValueColor).Render(version)
-	// buildLine := buildLabel + buildSep + buildVal
-	buildLine := ""
-
-	inputBoxStyle := lipgloss.NewStyle().
-		BorderLeft(true).
-		BorderStyle(lipgloss.Border{Left: "│"}).
-		BorderForeground(accentBlue).
-		PaddingLeft(2).
-		PaddingRight(2).
-		PaddingTop(1).
-		PaddingBottom(1).
-		Width(boxWidth).
-		Background(lipgloss.Color("#1e2035"))
-
-	inputBox := inputBoxStyle.Render(inputText + "\n\n" + buildLine)
-
-	var autocompleteBlock string
-	if len(m.suggestions) > 0 {
-		var sb strings.Builder
-		for i, s := range m.suggestions {
-			var desc string
-			for _, c := range allCommands {
-				if c.cmd == s {
-					desc = c.desc
-					break
-				}
-			}
-			if i == m.selectedSuggestion {
-				row := lipgloss.NewStyle().
-					Foreground(suggestionSelFg).
-					Background(suggestionSelBg).
-					Bold(true).
-					PaddingLeft(2).
-					PaddingRight(2).
-					Width(boxWidth).
-					Render(s + "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#3a6080")).Bold(false).Render(desc))
-				sb.WriteString(row)
-			} else {
-				row := lipgloss.NewStyle().
-					Foreground(suggestionFg).
-					Background(suggestionBg).
-					PaddingLeft(2).
-					PaddingRight(2).
-					Width(boxWidth).
-					Render(s + "  " + lipgloss.NewStyle().Foreground(suggestionDescFg).Render(desc))
-				sb.WriteString(row)
-			}
-			sb.WriteString("\n")
-		}
-		autocompleteBlock = lipgloss.NewStyle().
-			BorderLeft(true).
-			BorderStyle(lipgloss.Border{Left: "│"}).
-			BorderForeground(accentBlue).
-			Render(sb.String())
-	}
-
-	hintKey := func(k string) string {
-		return lipgloss.NewStyle().Foreground(hintKeyColor).Render(k)
-	}
-	hintDesc := func(d string) string {
-		return lipgloss.NewStyle().Foreground(hintDescColor).Render(d)
-	}
-	hintSep := lipgloss.NewStyle().Foreground(hintSepColor).Render(" · ")
-	hints := hintKey("tab") + " " + hintDesc("cycle suggestions") + hintSep +
-		hintKey("→") + " " + hintDesc("accept") + hintSep +
-		hintKey("enter") + " " + hintDesc("run") + hintSep +
-		hintKey("ctrl+c") + " " + hintDesc("quit")
-
-	tipBullet := lipgloss.NewStyle().Foreground(tipBulletColor).Render("●")
-	tipLabel := lipgloss.NewStyle().Foreground(tipBulletColor).Bold(true).Render(" Tip")
-	tipText := lipgloss.NewStyle().Foreground(tipTextColor).Render(" Type ")
-	tipCmd := lipgloss.NewStyle().Foreground(tipBulletColor).Render("/scan .")
-	tipRest := lipgloss.NewStyle().Foreground(tipTextColor).Render(" to analyze the current directory")
-	tip := lipgloss.NewStyle().PaddingBottom(2).Render(tipBullet + tipLabel + tipText + tipCmd + tipRest)
-
-	var inner strings.Builder
-	inner.WriteString(logo.String())
-	inner.WriteString("\n")
-	inner.WriteString(inputBox)
-	inner.WriteString("\n")
-	if autocompleteBlock != "" {
-		inner.WriteString(autocompleteBlock)
-		inner.WriteString("\n")
-	}
-	inner.WriteString(hints)
-	inner.WriteString("\n\n")
-	inner.WriteString(tip)
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner.String())
-}
-
-func (m *model) scanningView() string {
-	const boxWidth = 150
-	spinner := spinnerChars[m.spinnerFrame]
-	accentBlue := lipgloss.Color("#4fc3f7")
-	dimColor := lipgloss.Color("#4a5068")
-	pathColor := lipgloss.Color("#8899bb")
-
-	body := lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render(spinner+" Scanning…") +
-		"\n" +
-		lipgloss.NewStyle().Foreground(dimColor).Render("Path  ") +
-		lipgloss.NewStyle().Foreground(pathColor).Render(m.scanPath)
-
-	box := lipgloss.NewStyle().
-		BorderLeft(true).
-		BorderStyle(lipgloss.Border{Left: "│"}).
-		BorderForeground(accentBlue).
-		PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).
-		Width(boxWidth).
-		Background(lipgloss.Color("#1e2035")).
-		Render(body)
-
-	hint := lipgloss.NewStyle().Foreground(dimColor).Render("ctrl+c to cancel")
-
-	inner := box + "\n\n" + hint
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner)
-}
-
-func (m *model) resultsView() string {
-	dimColor := lipgloss.Color("#4a5068")
-	okColor := lipgloss.Color("#5af78e")
-	errorColor := lipgloss.Color("#ff5f5f")
-
-	if m.err != nil {
-		body := lipgloss.NewStyle().Foreground(errorColor).Bold(true).Render("Scan failed") +
-			"\n" + lipgloss.NewStyle().Foreground(dimColor).Render(m.err.Error())
-		box := lipgloss.NewStyle().
-			BorderLeft(true).BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(errorColor).
-			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(150).
-			Background(lipgloss.Color("#1e2035")).Render(body)
-		hint := lipgloss.NewStyle().Foreground(dimColor).Render("r  rescan    q  quit")
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
-	}
-
-	if len(m.issues) == 0 {
-		body := lipgloss.NewStyle().Foreground(okColor).Bold(true).Render("No issues found — clean scan!")
-		box := lipgloss.NewStyle().
-			BorderLeft(true).BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(okColor).
-			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(150).
-			Background(lipgloss.Color("#1e2035")).Render(body)
-		hint := lipgloss.NewStyle().Foreground(dimColor).Render("r  rescan    q  quit")
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
-	}
-
-	hintStyle := lipgloss.NewStyle().Foreground(dimColor)
-
-	var b strings.Builder
-
-	criticalCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f5f")).Bold(true).Width(12)
-	highCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffaa55")).Bold(true).Width(12)
-	mediumCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd080")).Width(12)
-	lowCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#5a6080")).Width(12)
-	fileCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#8899bb")).Width(45)
-	descCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#c8d0e8"))
-	headerCol := lipgloss.NewStyle().Foreground(lipgloss.Color("#4fc3f7")).Bold(true)
-
-	headerCritical := headerCol.Width(12).Render("Criticality")
-	headerFile := headerCol.Width(45).Render("File Path")
-	headerDesc := headerCol.Render("Description")
-
-	b.WriteString(headerCritical + " │ " + headerFile + " │ " + headerDesc + "\n")
-	b.WriteString(strings.Repeat("─", 12) + " ┼ " + strings.Repeat("─", 45) + " ┼ " + strings.Repeat("─", 40) + "\n")
-
-	maxLines := 100
-	endIdx := min(m.scrollOffset+maxLines, len(m.issues))
-
-	for i := m.scrollOffset; i < endIdx; i++ {
-		issue := m.issues[i]
-		var severityCol lipgloss.Style
-		switch issue.Severity {
-		case "critical":
-			severityCol = criticalCol
-		case "high":
-			severityCol = highCol
-		case "medium":
-			severityCol = mediumCol
-		default:
-			severityCol = lowCol
-		}
-
-		severityStr := severityCol.Render(issue.Severity)
-		filePathStr := fileCol.Render(truncate(issue.FilePath, 43))
-		descStr := descCol.Render(truncate(issue.Message, 40))
-		b.WriteString(severityStr + " │ " + filePathStr + " │ " + descStr + "\n")
-	}
-
-	b.WriteString("\n")
-	b.WriteString(hintStyle.Render("j/k · ↑/↓  scroll    g/G  top/bottom    pgup/pgdn  page    r  rescan    q  quit"))
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
-}
-
-func (m *model) updateView() string {
-	const boxWidth = 100
-	accentBlue := lipgloss.Color("#4fc3f7")
-	dimColor := lipgloss.Color("#4a5068")
-	errorColor := lipgloss.Color("#ff5f5f")
-	okColor := lipgloss.Color("#5af78e")
-
-	boxStyle := func(border lipgloss.Color) lipgloss.Style {
-		return lipgloss.NewStyle().
-			BorderLeft(true).
-			BorderStyle(lipgloss.Border{Left: "│"}).
-			BorderForeground(border).
-			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).
-			Width(boxWidth).
-			Background(lipgloss.Color("#1e2035"))
-	}
-	hint := func(s string) string {
-		return lipgloss.NewStyle().Foreground(dimColor).Render(s)
-	}
-
-	if m.err != nil {
-		body := lipgloss.NewStyle().Foreground(errorColor).Bold(true).Render("Update check failed") +
-			"\n" + lipgloss.NewStyle().Foreground(dimColor).Render(m.err.Error())
-		inner := boxStyle(errorColor).Render(body) + "\n\n" + hint("q  back")
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner)
-	}
-
-	if m.updateInfo == nil {
-		body := lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render("Checking for updates…")
-		inner := boxStyle(accentBlue).Render(body)
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner)
-	}
-
-	if !m.updateInfo.Available {
-		body := lipgloss.NewStyle().Foreground(okColor).Bold(true).Render("You are on the latest version")
-		inner := boxStyle(okColor).Render(body) + "\n\n" + hint("q  back")
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner)
-	}
-
-	body := lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render("Update Available") +
-		"\n" + lipgloss.NewStyle().Foreground(dimColor).Render("New version  ") +
-		lipgloss.NewStyle().Foreground(accentBlue).Render(m.updateInfo.Version)
-	inner := boxStyle(accentBlue).Render(body) + "\n\n" + hint("y  install    n  skip")
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner)
-}
-
-func (m *model) helpView() string {
-	const boxWidth = 100
-	accentBlue := lipgloss.Color("#4fc3f7")
-	dimColor := lipgloss.Color("#4a5068")
-	keyColor := lipgloss.Color("#4fc3f7")
-	descColor := lipgloss.Color("#8899bb")
-
-	headerStyle := lipgloss.NewStyle().Foreground(accentBlue).Bold(true)
-	keyStyle := lipgloss.NewStyle().Foreground(keyColor).Bold(true).Width(18)
-	descStyle := lipgloss.NewStyle().Foreground(descColor)
-	hintStyle := lipgloss.NewStyle().Foreground(dimColor)
-
-	var rows strings.Builder
-	rows.WriteString(headerStyle.Render("Commands"))
-	rows.WriteString("\n\n")
-	for _, c := range allCommands {
-		rows.WriteString(keyStyle.Render(c.cmd))
-		rows.WriteString("  ")
-		rows.WriteString(descStyle.Render(c.desc))
-		rows.WriteString("\n")
-	}
-	rows.WriteString("\n")
-	rows.WriteString(hintStyle.Render("q / esc  back"))
-
-	box := lipgloss.NewStyle().
-		BorderLeft(true).
-		BorderStyle(lipgloss.Border{Left: "│"}).
-		BorderForeground(accentBlue).
-		PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).
-		Width(boxWidth).
-		Background(lipgloss.Color("#1e2035")).
-		Render(rows.String())
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-}
-
-func RunTUI() error {
-	p := tea.NewProgram(
-		initialModel(),
-	)
-
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("failed to run TUI: %w", err)
-	}
-
-	return nil
-}
-
-func performUpdateCmd() tea.Msg {
-	return func() tea.Msg {
-		ctx := context.Background()
-		err := update.PerformUpdate(ctx)
-		if err != nil {
-			fmt.Printf("Update failed: %v\n", err)
-		}
-		return nil
-	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

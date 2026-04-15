@@ -10,15 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers/security"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store/memory"
+	"github.com/endrilickollari/debtdrone-cli/internal/service"
 	"github.com/endrilickollari/debtdrone-cli/internal/tui"
 	"github.com/endrilickollari/debtdrone-cli/internal/update"
-	"github.com/google/uuid"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -29,11 +23,6 @@ var (
 )
 
 func checkDependencies() {
-	if _, err := exec.LookPath("git"); err != nil {
-		fmt.Fprintln(os.Stderr, "❌ Error: git is required but not installed.")
-		os.Exit(1)
-	}
-
 	if _, err := exec.LookPath("trivy"); err != nil {
 		fmt.Fprintln(os.Stderr, "⚠️  Trivy not found. Security scanning will be skipped.")
 	}
@@ -112,44 +101,28 @@ func main() {
 		fmt.Fprintf(os.Stderr, "🔍 Scanning repository at: %s\n", absPath)
 	}
 
-	complexityStore := memory.NewInMemoryComplexityStore()
-
-	lineCounter := analyzers.NewLineCounter()
-	complexityAnalyzer := analyzers.NewComplexityAnalyzer(complexityStore)
-	trivyAnalyzer := security.NewTrivyAnalyzer()
-
-	gitService := git.NewService()
-	repo, err := gitService.OpenLocal(absPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to open repository: %v\n", err)
-		os.Exit(1)
-	}
-
+	svc := service.NewScanService()
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "analysisRunID", uuid.New())
-	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
-	ctx = context.WithValue(ctx, "userID", uuid.New())
 	ctx = context.WithValue(ctx, "isCLI", true)
 
-	var allIssues []models.TechnicalDebtIssue
-
-	analyzersList := []analysis.Analyzer{lineCounter, complexityAnalyzer, trivyAnalyzer}
-
-	var bar *progressbar.ProgressBar
-	if *outputFormat == "text" {
-		bar = startSpinner(len(analyzersList), "Analysing repository structure...")
+	opts := service.ScanOptions{
+		MaxComplexity: 15,
+		SecurityScan:  true,
 	}
 
-	for _, analyzer := range analyzersList {
-		result, err := analyzer.Analyze(ctx, repo)
-		if err != nil {
-		} else {
-			allIssues = append(allIssues, result.Issues...)
-		}
-
-		if bar != nil {
+	var bar *progressbar.ProgressBar
+	allIssues, err := svc.Run(ctx, absPath, opts, func(p service.ScanProgress) {
+		if *outputFormat == "text" {
+			if bar == nil {
+				bar = startSpinner(p.Total, "Analysing repository structure...")
+			}
 			bar.Add(1)
 		}
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to analyze repository: %v\n", err)
+		os.Exit(1)
 	}
 
 	if bar != nil {

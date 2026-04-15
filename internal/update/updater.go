@@ -15,10 +15,14 @@ var (
 )
 
 type UpdateInfo struct {
-	Available bool
-	Version   string
-	AssetURL  string
-	AssetName string
+	Available    bool
+	Version      string
+	AssetURL     string
+	AssetName    string
+	// ReleaseNotes contains the markdown body from the GitHub release page.
+	// It is populated by CheckForUpdate and displayed in the update prompt
+	// modal. May be empty for releases that have no description.
+	ReleaseNotes string
 }
 
 func CheckForUpdate(ctx context.Context, currentVersion string) (*UpdateInfo, error) {
@@ -43,10 +47,11 @@ func CheckForUpdate(ctx context.Context, currentVersion string) (*UpdateInfo, er
 	}
 
 	return &UpdateInfo{
-		Available: true,
-		Version:   latest.Version(),
-		AssetURL:  latest.AssetURL,
-		AssetName: latest.AssetName,
+		Available:    true,
+		Version:      latest.Version(),
+		AssetURL:     latest.AssetURL,
+		AssetName:    latest.AssetName,
+		ReleaseNotes: latest.ReleaseNotes,
 	}, nil
 }
 
