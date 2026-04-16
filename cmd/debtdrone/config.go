@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -47,7 +46,7 @@ func newConfigListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			items := mockConfigItems()
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
 			fmt.Fprintln(w, "KEY\tVALUE\tTYPE\tDESCRIPTION")
 			fmt.Fprintln(w, "---\t-----\t----\t-----------")
 
@@ -70,7 +69,7 @@ func newConfigSetCmd() *cobra.Command {
 			
 			// Mock the update logic — in a real implementation this would write to 
 			// a global ~/.debtdrone/config.json file.
-			fmt.Printf("✅ Successfully set %q to %q\n", key, value)
+			fmt.Fprintf(cmd.OutOrStdout(), "✅ Successfully set %q to %q\n", key, value)
 			return nil
 		},
 	}

@@ -39,7 +39,7 @@ ignore_paths:
 				return fmt.Errorf("failed to write .debtdrone.yaml: %w", err)
 			}
 
-			fmt.Println("Initialized .debtdrone.yaml successfully.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Initialized .debtdrone.yaml successfully.")
 			return nil
 		},
 	}

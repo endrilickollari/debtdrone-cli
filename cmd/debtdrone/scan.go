@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -57,11 +56,11 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 			// 3. Output Formatting
 			switch strings.ToLower(format) {
 			case "json":
-				if err := printJSON(issues); err != nil {
+				if err := printJSON(cmd, issues); err != nil {
 					return err
 				}
 			default:
-				if err := printText(issues); err != nil {
+				if err := printText(cmd, issues); err != nil {
 					return err
 				}
 			}
@@ -104,24 +103,24 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 }
 
 // printJSON outputs the scan results as a pretty-printed JSON array.
-func printJSON(issues []models.TechnicalDebtIssue) error {
+func printJSON(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 	if issues == nil {
 		issues = []models.TechnicalDebtIssue{}
 	}
-	encoder := json.NewEncoder(os.Stdout)
+	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(issues)
 }
 
 // printText outputs the scan results in a clean table using text/tabwriter.
-func printText(issues []models.TechnicalDebtIssue) error {
+func printText(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 	if len(issues) == 0 {
-		fmt.Println("No technical debt issues found.")
+		fmt.Fprintln(cmd.OutOrStdout(), "No technical debt issues found.")
 		return nil
 	}
 
 	// Initialize tabwriter for a clean columnar layout
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
 	
 	// Print Header
 	fmt.Fprintln(w, "SEVERITY\tFILE:LINE\tRULE\tMESSAGE")

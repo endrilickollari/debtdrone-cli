@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Run Unit Tests
+        run: go test -v -cover ./...
+
+      - name: Build the Binary
+        run: go build -o debtdrone ./cmd/debtdrone
+
+      - name: Run DebtDrone Quality Gate
+        # Dogfooding: we run the freshly compiled binary against our own codebase.
+        # This verifies that the headless scanning engine works and that we
+        # aren't introducing high-severity technical debt into our project.
+        run: ./debtdrone scan ./ --format=text --fail-on=high

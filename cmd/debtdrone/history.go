@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -63,9 +62,9 @@ func newHistoryCmd() *cobra.Command {
 			runs := mockAnalysisRuns(limit)
 
 			if format == "json" {
-				return printHistoryJSON(runs)
+				return printHistoryJSON(cmd, runs)
 			}
-			return printHistoryTable(runs)
+			return printHistoryTable(cmd, runs)
 		},
 	}
 
@@ -75,14 +74,14 @@ func newHistoryCmd() *cobra.Command {
 	return cmd
 }
 
-func printHistoryJSON(runs []models.AnalysisRun) error {
-	encoder := json.NewEncoder(os.Stdout)
+func printHistoryJSON(cmd *cobra.Command, runs []models.AnalysisRun) error {
+	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(runs)
 }
 
-func printHistoryTable(runs []models.AnalysisRun) error {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+func printHistoryTable(cmd *cobra.Command, runs []models.AnalysisRun) error {
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
 	
 	// Print Header
 	fmt.Fprintln(w, "DATE\tREPOSITORY\tISSUES\tCRITICAL\tHIGH")

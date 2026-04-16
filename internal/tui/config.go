@@ -163,12 +163,9 @@ func (m *ConfigModel) handleNavKey(str string) (tea.Model, tea.Cmd) {
 		m.offset = max(0, m.cursor-visibleRows+1)
 
 	case "q", "esc":
-		// Return a command that yields NavigateMsg. The Bubble Tea runtime
-		// executes this function after Update returns and feeds the resulting
-		// NavigateMsg back into AppModel.Update, where it is intercepted.
 		return m, func() tea.Msg { return NavigateMsg{State: stateMenu} }
 
-	case "enter", " ":
+	case "enter", "space", " ":
 		item := &m.items[m.cursor]
 		switch {
 		case item.Type == "bool":
