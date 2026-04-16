@@ -1,48 +1,34 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/update"
-	"github.com/google/uuid"
 )
 
+// Build-time variables injected by the linker (e.g. via -ldflags).
 var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
 )
 
+// state enumerates every top-level screen in the application.
 type state int
 
 const (
-	stateMenu state = iota
-	stateScanning
-	stateResults
+	stateMenu     state = iota
+	stateScanning       // scan in progress
+	stateResults        // scan finished (or history replay)
 	stateHistory
 	stateConfig
 	stateUpdating
-	stateHelp
+	stateHelp // rendered by MenuModel.renderHelp
 )
 
-type updatePhase int
-
-const (
-	updateChecking updatePhase = iota
-	updatePrompt
-	updateInstalling
-	updateSuccess
-	updateError
-)
-
+// allCommands is the canonical command registry used by the help screen and
+// the menu's autocomplete dropdown.
 var allCommands = []struct {
 	cmd  string
 	desc string
@@ -55,644 +41,203 @@ var allCommands = []struct {
 	{"/quit", "Exit the application"},
 }
 
-type model struct {
-	state     state
-	input     string
-	cursorPos int
-	issues    []models.TechnicalDebtIssue
-	scanPath  string
-	err       error
-	scanning  bool
+// tickMsg is sent on a fixed interval by tickCmd to drive spinner animations
+// in ScanModel and UpdateModel.
+type tickMsg struct{}
 
-	list   issueList
-	detail issueViewport
+// ─────────────────────────────────────────────────────────────────────────────
+// AppModel — the root "router" model
+// ─────────────────────────────────────────────────────────────────────────────
 
-	historyEntries []historyEntry
-	historyCursor  int
-	historyOffset  int
-	historyDetail  issueViewport
+// AppModel is the root Bubble Tea model. It owns:
+//   - Navigation state (activeState)
+//   - Global terminal dimensions (width, height)
+//   - The shared scan-history list (historyEntries)
+//   - Singleton instances of every child model
+//
+// Communication contract
+//
+//	Children NEVER mutate AppModel directly. Instead they return a tea.Cmd
+//	whose function yields a router message (NavigateMsg, StartScanMsg, …).
+//	AppModel intercepts those messages inside Update and acts on them before
+//	any child ever sees them. This keeps all cross-screen orchestration in
+//	one place and keeps child models completely self-contained.
+type AppModel struct {
+	activeState    state
+	width, height  int
+	historyEntries []historyEntry // shared by ScanModel (write) and HistoryModel (read)
 
-	configItems       []configItem
-	configCursor      int
-	configOffset      int
-	configCurrentMode configMode
-	configEditBuffer  string
-
-	updateStatus updatePhase
-	updateInfo   *update.UpdateInfo
-	updateErr    error
-
-	scanTask     string
-	scanProgress float64
-	scanChan     chan tea.Msg
-
-	mu                 sync.Mutex
-	spinnerFrame       int
-	width              int
-	height             int
-	suggestions        []string
-	selectedSuggestion int
+	// Child models are stored as concrete pointer types so we can call
+	// both the tea.Model interface and any model-specific helper methods
+	// (e.g. GetValue, Start, LoadResults) without type assertions.
+	menu    *MenuModel
+	scan    *ScanModel
+	history *HistoryModel
+	config  *ConfigModel
+	update  *UpdateModel
 }
 
-func initialModel() *model {
-	return &model{
-		state:              stateMenu,
-		scanning:           false,
-		spinnerFrame:       0,
-		width:              120,
-		height:             40,
-		selectedSuggestion: -1,
-		configItems:        defaultConfigItems(),
-		scanChan:           make(chan tea.Msg, 10),
+// NewAppModel constructs and wires up the AppModel with all child models.
+func NewAppModel() *AppModel {
+	return &AppModel{
+		activeState: stateMenu,
+		width:       120,
+		height:      40,
+		menu:        newMenuModel(),
+		scan:        newScanModel(),
+		history:     newHistoryModel(),
+		config:      newConfigModel(),
+		update:      newUpdateModel(),
 	}
 }
 
-func (m *model) listenForScanProgress() tea.Cmd {
-	return func() tea.Msg {
-		return <-m.scanChan
-	}
-}
-
-func (m *model) getConfigValue(key string) string {
-	for _, item := range m.configItems {
-		if item.Key == key {
-			return item.Value
-		}
-	}
-	return ""
-}
-
+// RunTUI is the package-level entry point called by cmd/debtdrone/main.go.
 func RunTUI() error {
-	m := initialModel()
-	p := tea.NewProgram(m)
-	_, err := p.Run()
+	_, err := tea.NewProgram(NewAppModel()).Run()
 	return err
 }
 
-type tickMsg struct{}
-
-func (m *model) Init() tea.Cmd {
-	return nil
+// Init satisfies tea.Model. We fan Init commands from all children so that
+// any child that needs to kick off background work can do so immediately.
+func (m *AppModel) Init() tea.Cmd {
+	return tea.Batch(
+		m.menu.Init(),
+		m.scan.Init(),
+		m.history.Init(),
+		m.config.Init(),
+		m.update.Init(),
+	)
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update is the central dispatcher. It classifies each incoming message into
+// one of three categories:
+//
+//  1. Global messages — WindowSizeMsg and ctrl+c are handled here.
+//     WindowSizeMsg is fanned to ALL children so every model pre-computes
+//     its layout even while off-screen.
+//
+//  2. Router messages — NavigateMsg, StartScanMsg, ScanFinishedMsg,
+//     LoadHistoryRunMsg, and StartUpdateMsg are intercepted here and are
+//     NEVER forwarded to any child. This is the single authoritative place
+//     for screen transitions and shared-state mutations.
+//
+//  3. All other messages — delegated exclusively to the currently-active
+//     child via delegateToActive.
+func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	// ── 1. Global ──────────────────────────────────────────────────────────
+
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		listH, detailH := splitHeight(m.height)
-		if m.state == stateResults {
-			m.list.height = listH
-			m.list.width = m.width
-			m.detail.height = detailH
-			m.detail.width = m.width - 4
+		m.width, m.height = msg.Width, msg.Height
+		// Fan resize to every child regardless of which is active. This
+		// ensures that ScanModel's split pane, HistoryModel's list height,
+		// etc. are always correct when the user switches screens.
+		var cmds []tea.Cmd
+		for _, child := range []tea.Model{m.menu, m.scan, m.history, m.config, m.update} {
+			_, c := child.Update(msg)
+			cmds = append(cmds, c)
 		}
-		if m.state == stateHistory {
-			m.historyDetail.height = detailH
-			m.historyDetail.width = m.width - 4
-			if len(m.historyEntries) > 0 {
-				m.historyDetail.setContent(
-					formatHistoryDetail(m.historyEntries[m.historyCursor], m.historyDetail.width),
-				)
-			}
-		}
+		return m, tea.Batch(cmds...)
 
 	case tea.KeyPressMsg:
-		return m.handleKey(msg)
-
-	case tickMsg:
-		switch {
-		case m.state == stateScanning:
-			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerChars)
-			return m, tickCmd()
-		case m.state == stateUpdating &&
-			(m.updateStatus == updateChecking || m.updateStatus == updateInstalling):
-			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerChars)
-			return m, tickCmd()
-		}
-
-	case scanProgressMsg:
-		m.scanTask = msg.Task
-		m.scanProgress = msg.Progress
-		return m, m.listenForScanProgress()
-
-	case scanCompleteMsg:
-		m.mu.Lock()
-		m.scanning = false
-		if msg.err != nil {
-			m.err = msg.err
-			m.state = stateMenu
-		} else {
-			m.issues = msg.issues
-			m.state = stateResults
-
-			listH, detailH := splitHeight(m.height)
-			m.list = newIssueList(msg.issues, m.width, listH)
-
-			// If JSON output is requested, use the detail viewport as a full-screen scrollable area
-			if m.getConfigValue("Output Format") == "json" {
-				jsonData, _ := json.MarshalIndent(msg.issues, "", "  ")
-				m.detail = issueViewport{
-					height: m.height - 4, // More space for full-screen JSON
-					width:  m.width - 4,
-				}
-				m.detail.setContent(string(jsonData))
-			} else {
-				m.detail = issueViewport{
-					height: detailH,
-					width:  m.width - 4,
-				}
-				m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
-			}
-
-			now := time.Now()
-			run := models.AnalysisRun{
-				ID:                  uuid.New(),
-				StartedAt:           now,
-				Status:              "completed",
-				TotalIssuesFound:    len(msg.issues),
-				CriticalIssuesCount: countBySeverity(msg.issues, "critical"),
-				HighIssuesCount:     countBySeverity(msg.issues, "high"),
-				MediumIssuesCount:   countBySeverity(msg.issues, "medium"),
-				LowIssuesCount:      countBySeverity(msg.issues, "low"),
-			}
-			run.CompletedAt = &now
-			run.RepositoryName = &msg.path
-			m.historyEntries = append([]historyEntry{{
-				run:    run,
-				path:   msg.path,
-				issues: msg.issues,
-			}}, m.historyEntries...)
-		}
-		m.mu.Unlock()
-		return m, nil
-
-	case checkUpdateMsg:
-		m.mu.Lock()
-		m.scanning = false
-		if msg.err != nil {
-			m.updateErr = msg.err
-			m.updateStatus = updateError
-		} else if msg.info == nil || !msg.info.Available {
-			m.updateInfo = msg.info
-			m.updateStatus = updateSuccess
-		} else {
-			m.updateInfo = msg.info
-			m.updateStatus = updatePrompt
-		}
-		m.mu.Unlock()
-		return m, nil
-
-	case updateCompleteMsg:
-		m.mu.Lock()
-		if msg.err != nil {
-			m.updateErr = msg.err
-			m.updateStatus = updateError
-		} else {
-			m.updateStatus = updateSuccess
-		}
-		m.mu.Unlock()
-		return m, nil
-	}
-
-	return m, nil
-}
-
-func (m *model) computeSuggestions() {
-	if m.input == "" {
-		m.suggestions = nil
-		m.selectedSuggestion = -1
-		return
-	}
-	prefix := strings.ToLower(strings.Fields(m.input)[0])
-	var matches []string
-	for _, c := range allCommands {
-		if strings.HasPrefix(c.cmd, prefix) && c.cmd != prefix {
-			matches = append(matches, c.cmd)
-		}
-	}
-	m.suggestions = matches
-	if m.selectedSuggestion >= len(matches) {
-		m.selectedSuggestion = -1
-	}
-}
-
-func (m *model) acceptSuggestion() {
-	var chosen string
-	if m.selectedSuggestion >= 0 && m.selectedSuggestion < len(m.suggestions) {
-		chosen = m.suggestions[m.selectedSuggestion]
-	} else if len(m.suggestions) > 0 {
-		chosen = m.suggestions[0]
-	}
-	if chosen == "" {
-		return
-	}
-	m.input = chosen + " "
-	m.cursorPos = len(m.input)
-	m.suggestions = nil
-	m.selectedSuggestion = -1
-}
-
-func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	str := msg.String()
-
-	switch m.state {
-	case stateMenu:
-		switch str {
-		case "enter":
-			if m.selectedSuggestion >= 0 && len(m.suggestions) > 0 {
-				m.acceptSuggestion()
-				return m, nil
-			}
-			return m.handleCommand()
-		case "tab":
-			if len(m.suggestions) > 0 {
-				m.selectedSuggestion = (m.selectedSuggestion + 1) % len(m.suggestions)
-			}
-		case "shift+tab":
-			if len(m.suggestions) > 0 {
-				m.selectedSuggestion--
-				if m.selectedSuggestion < 0 {
-					m.selectedSuggestion = len(m.suggestions) - 1
-				}
-			}
-		case "down":
-			if len(m.suggestions) > 0 {
-				m.selectedSuggestion = (m.selectedSuggestion + 1) % len(m.suggestions)
-			}
-		case "up":
-			if len(m.suggestions) > 0 {
-				m.selectedSuggestion--
-				if m.selectedSuggestion < 0 {
-					m.selectedSuggestion = len(m.suggestions) - 1
-				}
-			}
-		case "right":
-			if m.cursorPos < len(m.input) {
-				m.cursorPos++
-			} else if len(m.suggestions) > 0 {
-				m.acceptSuggestion()
-			}
-		case "left":
-			if m.cursorPos > 0 {
-				m.cursorPos--
-			}
-		case "backspace":
-			if m.cursorPos > 0 {
-				m.input = m.input[:m.cursorPos-1] + m.input[m.cursorPos:]
-				m.cursorPos--
-				m.computeSuggestions()
-			}
-		case "ctrl+c":
-			fmt.Println("👋 Goodbye!")
-			os.Exit(0)
-		default:
-			if len(str) == 1 {
-				m.input = m.input[:m.cursorPos] + str + m.input[m.cursorPos:]
-				m.cursorPos++
-				m.computeSuggestions()
-			}
-		}
-		return m, nil
-
-	case stateScanning:
-		if str == "ctrl+c" {
+		if msg.String() == "ctrl+c" {
 			fmt.Println("👋 Goodbye!")
 			os.Exit(0)
 		}
-		return m, nil
+		// All other keys fall through to active-model delegation below.
 
-	case stateResults:
-		isJSON := m.getConfigValue("Output Format") == "json"
+	// ── 2. Router messages ─────────────────────────────────────────────────
 
-		updateDetail := func() {
-			if !isJSON {
-				m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
-			}
-		}
+	// NavigateMsg: any child can request a screen change by returning a Cmd
+	// that yields this message. AppModel performs the transition here and
+	// no child ever needs to know about other children.
+	case NavigateMsg:
+		return m.navigateTo(msg.State)
 
-		switch str {
-		case "q", "esc":
-			m.state = stateMenu
-			m.input = ""
-			m.cursorPos = 0
-		case "j", "down":
-			if isJSON {
-				m.detail.scrollDown(1)
-			} else {
-				m.list.moveDown()
-				updateDetail()
-			}
-		case "k", "up":
-			if isJSON {
-				m.detail.scrollUp(1)
-			} else {
-				m.list.moveUp()
-				updateDetail()
-			}
-		case "pgdn":
-			m.list.pageDown()
-			updateDetail()
-		case "pgup":
-			m.list.pageUp()
-			updateDetail()
-		case "g":
-			m.list.goTop()
-			updateDetail()
-		case "G":
-			m.list.goBottom()
-			updateDetail()
-		case "J":
-			m.detail.scrollDown(3)
-		case "K":
-			m.detail.scrollUp(3)
-		case "r":
-			m.state = stateMenu
-			m.input = ""
-			m.cursorPos = 0
-		}
-		return m, nil
-
-	case stateHistory:
-		updateHistoryDetail := func() {
-			if len(m.historyEntries) == 0 {
-				return
-			}
-			m.historyDetail.setContent(
-				formatHistoryDetail(m.historyEntries[m.historyCursor], m.historyDetail.width),
-			)
-		}
-
-		historyListH, _ := splitHeight(m.height)
-
-		switch str {
-		case "q", "esc":
-			m.state = stateMenu
-			m.input = ""
-			m.cursorPos = 0
-		case "j", "down":
-			if m.historyCursor < len(m.historyEntries)-1 {
-				m.historyCursor++
-				if m.historyCursor >= m.historyOffset+historyListH {
-					m.historyOffset++
-				}
-				updateHistoryDetail()
-			}
-		case "k", "up":
-			if m.historyCursor > 0 {
-				m.historyCursor--
-				if m.historyCursor < m.historyOffset {
-					m.historyOffset--
-				}
-				updateHistoryDetail()
-			}
-		case "g":
-			m.historyCursor = 0
-			m.historyOffset = 0
-			updateHistoryDetail()
-		case "G":
-			if len(m.historyEntries) > 0 {
-				m.historyCursor = len(m.historyEntries) - 1
-				m.historyOffset = max(0, m.historyCursor-historyListH+1)
-				updateHistoryDetail()
-			}
-		case "J":
-			m.historyDetail.scrollDown(3)
-		case "K":
-			m.historyDetail.scrollUp(3)
-		case "enter":
-			if len(m.historyEntries) == 0 {
-				break
-			}
-			entry := m.historyEntries[m.historyCursor]
-			m.issues = entry.issues
-			m.scanPath = entry.path
-			m.err = nil
-			listH, detailH := splitHeight(m.height)
-			m.list = newIssueList(entry.issues, m.width, listH)
-			m.detail = issueViewport{height: detailH, width: m.width - 4}
-			m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
-			m.state = stateResults
-		}
-		return m, nil
-
-	case stateConfig:
-		switch m.configCurrentMode {
-		case configNavigating:
-			visibleRows := max(m.height-8, 4)
-			switch str {
-			case "j", "down":
-				if m.configCursor < len(m.configItems)-1 {
-					m.configCursor++
-					if m.configCursor >= m.configOffset+visibleRows {
-						m.configOffset++
-					}
-				}
-			case "k", "up":
-				if m.configCursor > 0 {
-					m.configCursor--
-					if m.configCursor < m.configOffset {
-						m.configOffset--
-					}
-				}
-			case "g":
-				m.configCursor = 0
-				m.configOffset = 0
-			case "G":
-				m.configCursor = len(m.configItems) - 1
-				m.configOffset = max(0, m.configCursor-visibleRows+1)
-			case "q", "esc":
-				m.state = stateMenu
-				m.input = ""
-				m.cursorPos = 0
-			case "enter", " ":
-				item := &m.configItems[m.configCursor]
-				if item.Type == "bool" {
-					if item.Value == "true" {
-						item.Value = "false"
-					} else {
-						item.Value = "true"
-					}
-				} else if item.IsOption {
-					// Cycle through options
-					currentIndex := -1
-					for i, opt := range item.Options {
-						if opt == item.Value {
-							currentIndex = i
-							break
-						}
-					}
-					nextIndex := (currentIndex + 1) % len(item.Options)
-					item.Value = item.Options[nextIndex]
-				} else {
-					m.configEditBuffer = item.Value
-					m.configCurrentMode = configEditing
-				}
-			case "right":
-				item := &m.configItems[m.configCursor]
-				if item.IsOption {
-					currentIndex := -1
-					for i, opt := range item.Options {
-						if opt == item.Value {
-							currentIndex = i
-							break
-						}
-					}
-					nextIndex := (currentIndex + 1) % len(item.Options)
-					item.Value = item.Options[nextIndex]
-				}
-			case "left":
-				item := &m.configItems[m.configCursor]
-				if item.IsOption {
-					currentIndex := -1
-					for i, opt := range item.Options {
-						if opt == item.Value {
-							currentIndex = i
-							break
-						}
-					}
-					prevIndex := (currentIndex - 1 + len(item.Options)) % len(item.Options)
-					item.Value = item.Options[prevIndex]
-				}
-			}
-
-		case configEditing:
-			switch str {
-			case "esc":
-				m.configEditBuffer = ""
-				m.configCurrentMode = configNavigating
-			case "enter":
-				m.configItems[m.configCursor].Value = m.configEditBuffer
-				m.configEditBuffer = ""
-				m.configCurrentMode = configNavigating
-			case "backspace":
-				runes := []rune(m.configEditBuffer)
-				if len(runes) > 0 {
-					m.configEditBuffer = string(runes[:len(runes)-1])
-				}
-			default:
-				if isEditableChar(str) {
-					m.configEditBuffer += str
-				}
-			}
-		}
-		return m, nil
-
-	case stateUpdating:
-		switch m.updateStatus {
-		case updateChecking, updateInstalling:
-			return m, nil
-		case updatePrompt:
-			switch str {
-			case "y":
-				m.updateStatus = updateInstalling
-				m.spinnerFrame = 0
-				return m, tea.Batch(performUpdateCmd, tickCmd())
-			case "n", "q", "esc":
-				m.state = stateMenu
-				m.updateInfo = nil
-				m.updateErr = nil
-			}
-			return m, nil
-		case updateSuccess, updateError:
-			m.state = stateMenu
-			m.updateInfo = nil
-			m.updateErr = nil
-			return m, nil
-		}
-		return m, nil
-
-	case stateHelp:
-		if str == "esc" || str == "q" {
-			m.state = stateMenu
-		}
-		return m, nil
-	}
-
-	return m, nil
-}
-
-func (m *model) handleCommand() (tea.Model, tea.Cmd) {
-	cmd := strings.TrimSpace(m.input)
-	m.input = ""
-	m.cursorPos = 0
-	m.suggestions = nil
-	m.selectedSuggestion = -1
-
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return m, nil
-	}
-
-	command := strings.ToLower(parts[0])
-
-	switch command {
-	case "/scan":
-		path := "."
-		if len(parts) > 1 {
-			path = parts[1]
-		}
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			m.err = fmt.Errorf("failed to resolve path: %w", err)
-			return m, nil
-		}
-
+	// StartScanMsg: MenuModel parsed a /scan command and resolved the path.
+	// AppModel merges in the current config values and kicks off the scan.
+	case StartScanMsg:
 		maxComplexity := 15
-		fmt.Sscanf(m.getConfigValue("Max Complexity"), "%d", &maxComplexity)
-		securityScan := m.getConfigValue("Security Scan") == "true"
+		fmt.Sscanf(m.config.GetValue("Max Complexity"), "%d", &maxComplexity)
+		securityScan := m.config.GetValue("Security Scan") == "true"
+		outputFormat := m.config.GetValue("Output Format")
+		cmd := m.scan.Start(msg.Path, maxComplexity, securityScan, outputFormat)
+		m.activeState = stateScanning
+		return m, cmd
 
-		m.scanPath = absPath
-		m.scanning = true
-		m.scanTask = "Initializing scan..."
-		m.scanProgress = 0
-		m.state = stateScanning
-		return m, tea.Batch(
-			startScan(absPath, maxComplexity, securityScan, m.scanChan),
-			m.listenForScanProgress(),
-		)
-
-	case "/update":
-		m.updateStatus = updateChecking
-		m.updateErr = nil
-		m.updateInfo = nil
-		m.spinnerFrame = 0
-		m.scanning = true
-		m.state = stateUpdating
-		return m, tea.Batch(startUpdateCheck, tickCmd())
-
-	case "/history":
-		m.historyCursor = 0
-		m.historyOffset = 0
-		_, detailH := splitHeight(m.height)
-		m.historyDetail = issueViewport{height: detailH, width: m.width - 4}
-		if len(m.historyEntries) > 0 {
-			m.historyDetail.setContent(
-				formatHistoryDetail(m.historyEntries[0], m.historyDetail.width),
-			)
+	// ScanFinishedMsg: ScanModel completed (successfully or not). On success
+	// prepend the new run to the shared history and notify HistoryModel so
+	// it is ready the next time the user opens /history.
+	case ScanFinishedMsg:
+		if msg.Err == nil {
+			m.historyEntries = append([]historyEntry{msg.Entry}, m.historyEntries...)
+			m.history.SetEntries(m.historyEntries)
 		}
-		m.state = stateHistory
+		m.activeState = stateResults
 		return m, nil
 
-	case "/config":
-		if len(m.configItems) == 0 {
-			m.configItems = defaultConfigItems()
-		}
-		m.configCursor = 0
-		m.configOffset = 0
-		m.configCurrentMode = configNavigating
-		m.configEditBuffer = ""
-		m.state = stateConfig
+	// LoadHistoryRunMsg: HistoryModel wants to replay a past scan as results.
+	// Hydrate ScanModel with the historical data then show the results screen.
+	case LoadHistoryRunMsg:
+		outputFormat := m.config.GetValue("Output Format")
+		m.scan.LoadResults(msg.Entry, outputFormat)
+		m.activeState = stateResults
 		return m, nil
 
-	case "/help", "/h", "?":
-		m.state = stateHelp
-		return m, nil
-
-	case "/quit", "/q", "exit":
-		fmt.Println("👋 Goodbye!")
-		os.Exit(0)
+	// StartUpdateMsg: MenuModel parsed a /update command.
+	case StartUpdateMsg:
+		cmd := m.update.Start()
+		m.activeState = stateUpdating
+		return m, cmd
 	}
 
+	// ── 3. Active-child delegation ─────────────────────────────────────────
+	return m.delegateToActive(msg)
+}
+
+// navigateTo changes the active screen and performs any per-screen setup that
+// cannot live inside the child model itself (because it requires shared state
+// such as historyEntries or cross-model dimension data).
+func (m *AppModel) navigateTo(s state) (tea.Model, tea.Cmd) {
+	m.activeState = s
+	switch s {
+	case stateHistory:
+		// Hydrate HistoryModel with the latest entries before showing it.
+		m.history.SetEntries(m.historyEntries)
+	case stateConfig:
+		// Reset cursor/mode so the screen is always clean on entry.
+		m.config.Reset()
+	case stateMenu:
+		m.menu.Reset()
+	case stateHelp:
+		m.menu.ShowHelp()
+	}
+	return m, nil
+}
+
+// delegateToActive forwards msg to the currently-active child and discards
+// the returned model value. Because every child Update method uses a pointer
+// receiver and returns the same receiver pointer, mutations happen in-place —
+// there is no need to re-assign the child field. Only the returned Cmd
+// matters here.
+func (m *AppModel) delegateToActive(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.activeState {
+	case stateMenu, stateHelp:
+		_, cmd := m.menu.Update(msg)
+		return m, cmd
+	case stateScanning, stateResults:
+		_, cmd := m.scan.Update(msg)
+		return m, cmd
+	case stateHistory:
+		_, cmd := m.history.Update(msg)
+		return m, cmd
+	case stateConfig:
+		_, cmd := m.config.Update(msg)
+		return m, cmd
+	case stateUpdating:
+		_, cmd := m.update.Update(msg)
+		return m, cmd
+	}
 	return m, nil
 }
