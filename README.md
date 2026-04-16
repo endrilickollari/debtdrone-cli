@@ -33,6 +33,21 @@ Built on [Cobra](https://github.com/spf13/cobra).
 
 ## 🚀 Installation
 
+**Via Homebrew (Recommended):**
+```bash
+brew install endrilickollari/tap/debtdrone
+```
+
+**Via Shell Script (Mac/Linux):**
+```bash
+curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
+```
+
+**Via PowerShell (Windows):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.ps1 | iex
+```
+
 **Via Go Install:**
 ```bash
 go install github.com/endrilickollari/debtdrone-cli/cmd/debtdrone@latest
