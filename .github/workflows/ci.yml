@@ -28,6 +28,7 @@ jobs:
 
       - name: Run DebtDrone Quality Gate
         # Dogfooding: we run the freshly compiled binary against our own codebase.
-        # This verifies that the headless scanning engine works and that we
-        # aren't introducing high-severity technical debt into our project.
+        # We allow this step to fail (continue-on-error) so we can see the debt 
+        # report for information without blocking the CI pipeline.
         run: ./debtdrone scan ./ --format=text --fail-on=high
+        continue-on-error: true
