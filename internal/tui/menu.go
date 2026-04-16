@@ -10,29 +10,15 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MenuModel
-// ─────────────────────────────────────────────────────────────────────────────
-
-// MenuModel owns the main prompt screen and the help overlay. It handles
-// command input, tab-completion, and the /help view.
-//
-// Navigation contract:
-//   - /scan <path>  → StartScanMsg (AppModel reads config, starts ScanModel)
-//   - /update       → StartUpdateMsg
-//   - /history      → NavigateMsg{stateHistory}
-//   - /config       → NavigateMsg{stateConfig}
-//   - /help         → NavigateMsg{stateHelp}  (renders via renderHelp)
-//   - esc in help   → NavigateMsg{stateMenu}
-//   - /quit         → os.Exit
+// MenuModel manages the main prompt and help overlay.
 type MenuModel struct {
 	input              string
 	cursorPos          int
 	suggestions        []string
 	selectedSuggestion int
-	pathComplete       bool   // true when suggestions are filesystem paths for /scan
+	pathComplete       bool
 	showingHelp        bool
-	err                string // last command error (displayed below input box)
+	err                string
 	width, height      int
 }
 
@@ -44,8 +30,7 @@ func newMenuModel() *MenuModel {
 	}
 }
 
-// Reset is called by AppModel.navigateTo when returning to the menu screen.
-// It clears the input and error state so the prompt is always clean on entry.
+// Reset clears the menu state.
 func (m *MenuModel) Reset() {
 	m.input = ""
 	m.cursorPos = 0
@@ -55,15 +40,12 @@ func (m *MenuModel) Reset() {
 	m.err = ""
 }
 
-// ShowHelp is called by AppModel.navigateTo(stateHelp) to flip the help flag.
 func (m *MenuModel) ShowHelp() {
 	m.showingHelp = true
 }
 
-// Init satisfies tea.Model.
 func (m *MenuModel) Init() tea.Cmd { return nil }
 
-// Update handles keyboard input for both the menu prompt and the help overlay.
 func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -73,7 +55,6 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		str := msg.String()
 
-		// Help overlay: only esc/q navigates back.
 		if m.showingHelp {
 			if str == "esc" || str == "q" {
 				m.showingHelp = false
@@ -143,8 +124,7 @@ func (m *MenuModel) handleMenuKey(str string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleCommand parses the current input buffer and returns the appropriate
-// router message as a tea.Cmd. AppModel intercepts the resulting messages.
+// handleCommand processes the entered command.
 func (m *MenuModel) handleCommand() (tea.Model, tea.Cmd) {
 	cmd := strings.TrimSpace(m.input)
 	m.input = ""
@@ -169,8 +149,6 @@ func (m *MenuModel) handleCommand() (tea.Model, tea.Cmd) {
 			m.err = fmt.Sprintf("failed to resolve path: %v", err)
 			return m, nil
 		}
-		// Emit StartScanMsg. AppModel intercepts it, reads config values,
-		// and calls ScanModel.Start with the full options.
 		return m, func() tea.Msg { return StartScanMsg{Path: absPath} }
 
 	case "/update":
@@ -192,18 +170,9 @@ func (m *MenuModel) handleCommand() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// computeSuggestions recomputes m.suggestions for the current input.
-// It operates in two modes:
-//
-//	Command mode: input starts with any prefix of a known command → suggest
-//	             command names (e.g. "/s" → "/scan", "/update", …).
-//	Path mode:   input starts with "/scan " (note the space) → suggest
-//	             filesystem paths relative to the working directory.
 func (m *MenuModel) computeSuggestions() {
 	m.selectedSuggestion = -1
 
-	// ── Path completion for /scan ─────────────────────────────────────────
-	// Triggered as soon as the user types the space after "/scan".
 	if strings.HasPrefix(strings.ToLower(m.input), "/scan ") {
 		m.pathComplete = true
 		pathPrefix := m.input[len("/scan "):]
@@ -211,7 +180,6 @@ func (m *MenuModel) computeSuggestions() {
 		return
 	}
 
-	// ── Command completion ─────────────────────────────────────────────────
 	m.pathComplete = false
 	if m.input == "" {
 		m.suggestions = nil
@@ -227,13 +195,6 @@ func (m *MenuModel) computeSuggestions() {
 	m.suggestions = matches
 }
 
-// acceptSuggestion inserts the highlighted (or first) suggestion into the
-// input buffer. Behaviour differs between command and path modes:
-//
-//	Command mode: replaces the whole input with "/command " (trailing space).
-//	Path mode:    replaces the path argument with the chosen path and
-//	              immediately recomputes suggestions so the user can keep
-//	              drilling into subdirectories with Tab.
 func (m *MenuModel) acceptSuggestion() {
 	if len(m.suggestions) == 0 {
 		return
@@ -248,31 +209,22 @@ func (m *MenuModel) acceptSuggestion() {
 	}
 
 	if m.pathComplete {
-		// Keep the "/scan " prefix and replace the path argument.
 		m.input = "/scan " + chosen
 		m.cursorPos = len(m.input)
-		// Immediately recompute: if chosen ends in "/" the user can keep
-		// tabbing into subdirectories without typing anything more.
 		m.computeSuggestions()
 		return
 	}
 
-	// Command mode: insert "command " and clear suggestions.
 	m.input = chosen + " "
 	m.cursorPos = len(m.input)
 	m.suggestions = nil
 	m.selectedSuggestion = -1
 }
 
-// pathSuggestions returns up to maxPathSuggestions directory paths that match
-// prefix, suitable for the /scan argument. It normalises relative paths to the
-// "./" form for readability and appends "/" to every result to signal that the
-// entry is a directory and to allow further completion.
+// pathSuggestions provides directory completions for the /scan command.
 func pathSuggestions(prefix string) []string {
 	const maxSuggestions = 10
 
-	// Normalise relative paths (that are not "../…") to start with "./" so
-	// the suggestions are visually consistent.
 	if prefix != "" && !filepath.IsAbs(prefix) &&
 		!strings.HasPrefix(prefix, "./") &&
 		!strings.HasPrefix(prefix, "../") &&
@@ -280,13 +232,11 @@ func pathSuggestions(prefix string) []string {
 		prefix = "./" + prefix
 	}
 
-	// Determine the directory to list and the name prefix to filter by.
 	var dirToList, nameFilter string
 	switch {
 	case prefix == "":
 		dirToList, nameFilter = ".", ""
 	case strings.HasSuffix(prefix, "/"):
-		// User finished a path segment — list the children of that dir.
 		dirToList = filepath.Clean(prefix)
 		nameFilter = ""
 	default:
@@ -305,8 +255,6 @@ func pathSuggestions(prefix string) []string {
 			continue
 		}
 		name := e.Name()
-		// Skip hidden directories unless the user is explicitly typing a
-		// dot-prefixed name (e.g. ".git" or ".config").
 		if strings.HasPrefix(name, ".") && !strings.HasPrefix(nameFilter, ".") {
 			continue
 		}
@@ -314,7 +262,6 @@ func pathSuggestions(prefix string) []string {
 			continue
 		}
 
-		// Compose the full path in the same style as the prefix.
 		joined := filepath.Join(dirToList, name)
 		var full string
 		switch {

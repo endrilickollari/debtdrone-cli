@@ -16,18 +16,7 @@ type historyEntry struct {
 	issues []models.TechnicalDebtIssue
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HistoryModel
-// ─────────────────────────────────────────────────────────────────────────────
-
-// HistoryModel encapsulates the /history screen: a list of past scans on top
-// and a detail viewport on the bottom.
-//
-// Navigation contract:
-//   - esc/q → returns NavigateMsg{State: stateMenu}
-//   - enter on a run → returns LoadHistoryRunMsg{Entry: …}
-//     AppModel intercepts LoadHistoryRunMsg, hydrates ScanModel, and
-//     transitions to stateResults without running a new scan.
+// HistoryModel manages the scan history screen.
 type HistoryModel struct {
 	entries []historyEntry
 	cursor  int
@@ -41,9 +30,7 @@ func newHistoryModel() *HistoryModel {
 	return &HistoryModel{width: 120, height: 40}
 }
 
-// SetEntries is called by AppModel whenever the history list changes (after a
-// new scan completes) or when the user navigates to this screen. It resets the
-// cursor so the most-recent run is always highlighted on entry.
+// SetEntries updates the history list and resets the view.
 func (m *HistoryModel) SetEntries(entries []historyEntry) {
 	m.entries = entries
 	m.cursor = 0
@@ -55,16 +42,8 @@ func (m *HistoryModel) SetEntries(entries []historyEntry) {
 	}
 }
 
-// Init satisfies tea.Model.
 func (m *HistoryModel) Init() tea.Cmd { return nil }
 
-// Update handles input for the history screen.
-//
-// Key message flows:
-//
-//	tea.WindowSizeMsg → resize the detail viewport; refresh its content
-//	tea.KeyPressMsg   → j/k navigation, g/G jump, enter → LoadHistoryRunMsg,
-//	                    q/esc → NavigateMsg
 func (m *HistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

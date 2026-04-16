@@ -9,38 +9,26 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/internal/update"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Domain types
-// ─────────────────────────────────────────────────────────────────────────────
-
 type updatePhase int
 
 const (
 	updateChecking  updatePhase = iota
-	updatePrompt               // update available; waiting for y/n
+	updatePrompt
 	updateInstalling
 	updateSuccess
 	updateError
 )
 
-// checkUpdateMsg is the internal result of the update-check goroutine.
+// checkUpdateMsg is the result of the update-check.
 type checkUpdateMsg struct {
 	info *update.UpdateInfo
 	err  error
 }
 
-// updateCompleteMsg is the internal result of the install goroutine.
+// updateCompleteMsg is the result of the install.
 type updateCompleteMsg struct{ err error }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UpdateModel
-// ─────────────────────────────────────────────────────────────────────────────
-
-// UpdateModel encapsulates the /update screen and its async operations.
-//
-// Navigation contract:
-//   - On success/error/skip: returns NavigateMsg{State: stateMenu}
-//   - Never mutates AppModel directly.
+// UpdateModel manages the auto-update screen.
 type UpdateModel struct {
 	phase        updatePhase
 	info         *update.UpdateInfo
@@ -54,8 +42,7 @@ func newUpdateModel() *UpdateModel {
 	return &UpdateModel{width: 120, height: 40}
 }
 
-// Start is called by AppModel when it intercepts StartUpdateMsg.
-// It resets state and returns the commands to kick off the update check.
+// Start initiates the update check.
 func (m *UpdateModel) Start() tea.Cmd {
 	m.phase = updateChecking
 	m.info = nil
@@ -64,10 +51,8 @@ func (m *UpdateModel) Start() tea.Cmd {
 	return tea.Batch(startUpdateCheck, tickCmd())
 }
 
-// Init satisfies tea.Model.
 func (m *UpdateModel) Init() tea.Cmd { return nil }
 
-// Update handles both the async result messages and keyboard input.
 func (m *UpdateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

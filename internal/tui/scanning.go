@@ -17,39 +17,28 @@ import (
 	"github.com/google/uuid"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal message types (package-private; never cross model boundaries)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// scanProgressMsg is sent by the scan goroutine to report incremental progress.
+// scanProgressMsg reports incremental progress.
 type scanProgressMsg struct {
 	Task     string
 	Progress float64
 }
 
-// scanCompleteMsg is the final message from the scan goroutine.
+// scanCompleteMsg is sent when the scan finishes.
 type scanCompleteMsg struct {
 	path   string
 	issues []models.TechnicalDebtIssue
 	err    error
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-// spinnerChars is the braille dot-spinner animation used by both ScanModel
-// and UpdateModel.
+// spinnerChars is the animation used by ScanModel and UpdateModel.
 var spinnerChars = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// tickCmd fires a tickMsg every 100ms to drive spinner frames.
+// tickCmd fires every 100ms for spinner animations.
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second/10, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-// startScan starts the analysis goroutine and returns immediately with nil
-// so the Bubble Tea event loop stays responsive. Progress and completion
-// events are sent to progressChan and later surfaced by listenForScanProgress.
+// startScan runs the analysis in a goroutine.
 func startScan(path string, maxComplexity int, securityScan bool, progressChan chan tea.Msg) tea.Cmd {
 	log.SetOutput(io.Discard)
 	return func() tea.Msg {
@@ -84,34 +73,15 @@ func startScan(path string, maxComplexity int, securityScan bool, progressChan c
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// scanPhase tracks which sub-screen ScanModel is showing
-// ─────────────────────────────────────────────────────────────────────────────
-
 type scanPhase int
 
 const (
-	scanIdle    scanPhase = iota // not yet started
-	scanRunning                  // goroutine active, progress bar visible
-	scanResults                  // results (or error) ready to display
+	scanIdle    scanPhase = iota
+	scanRunning
+	scanResults
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ScanModel
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ScanModel handles two closely related screens that share state:
-//   - stateScanning: animated progress bar while the goroutine runs.
-//   - stateResults:  master-detail issue list after the scan (or on history replay).
-//
-// Navigation contract:
-//   - When the scan goroutine finishes, ScanModel returns a command that
-//     yields ScanFinishedMsg{Entry, Err}. AppModel intercepts it, adds the
-//     run to the shared history list, and transitions to stateResults.
-//   - When the user presses q/esc on the results screen, ScanModel returns a
-//     command that yields NavigateMsg{State: stateMenu}. AppModel intercepts
-//     and transitions.
-//   - ScanModel never mutates AppModel state directly.
+// ScanModel manages the scan progress and results views.
 type ScanModel struct {
 	phase        scanPhase
 	scanPath     string
@@ -119,9 +89,8 @@ type ScanModel struct {
 	scanProgress float64
 	spinnerFrame int
 	scanChan     chan tea.Msg
-	outputFormat string // "text" | "json"; set by AppModel at scan start
+	outputFormat string
 
-	// Results state (populated after scan completes or LoadResults is called)
 	err    error
 	issues []models.TechnicalDebtIssue
 	list   issueList
@@ -138,9 +107,7 @@ func newScanModel() *ScanModel {
 	}
 }
 
-// Start is called by AppModel when it intercepts StartScanMsg. It arms the
-// model and returns the batch of commands needed to run the scan and keep the
-// spinner alive.
+// Start begins a new repository scan.
 func (m *ScanModel) Start(path string, maxComplexity int, securityScan bool, outputFormat string) tea.Cmd {
 	m.phase = scanRunning
 	m.scanPath = path
@@ -150,7 +117,7 @@ func (m *ScanModel) Start(path string, maxComplexity int, securityScan bool, out
 	m.outputFormat = outputFormat
 	m.err = nil
 	m.issues = nil
-	m.scanChan = make(chan tea.Msg, 10) // fresh channel per scan
+	m.scanChan = make(chan tea.Msg, 10)
 
 	return tea.Batch(
 		startScan(path, maxComplexity, securityScan, m.scanChan),
@@ -159,8 +126,7 @@ func (m *ScanModel) Start(path string, maxComplexity int, securityScan bool, out
 	)
 }
 
-// LoadResults is called by AppModel when it intercepts LoadHistoryRunMsg.
-// It bypasses a live scan and hydrates the results pane from a past run.
+// LoadResults displays historical scan data.
 func (m *ScanModel) LoadResults(entry historyEntry, outputFormat string) {
 	m.phase = scanResults
 	m.scanPath = entry.path
@@ -174,28 +140,14 @@ func (m *ScanModel) LoadResults(entry historyEntry, outputFormat string) {
 	m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
 }
 
-// listenForScanProgress returns a Cmd that blocks until the scan goroutine
-// sends its next event, then surfaces that event as a Bubble Tea message so
-// that Update can process it in the main goroutine.
 func (m *ScanModel) listenForScanProgress() tea.Cmd {
 	return func() tea.Msg { return <-m.scanChan }
 }
 
-// Init satisfies tea.Model.
 func (m *ScanModel) Init() tea.Cmd { return nil }
 
-// Update handles input and async events for both the scanning and results screens.
-//
-// Key message flows:
-//
-//	tea.WindowSizeMsg   → reflow list/viewport dimensions
-//	tickMsg             → advance spinner frame while phase == scanRunning
-//	scanProgressMsg     → update task label + progress bar; re-arm listener
-//	scanCompleteMsg     → build results state; emit ScanFinishedMsg upward
-//	tea.KeyPressMsg     → navigation keys on results screen; q/esc → NavigateMsg
 func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.phase == scanResults {
@@ -220,7 +172,6 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scanProgressMsg:
 		m.scanTask = msg.Task
 		m.scanProgress = msg.Progress
-		// Re-arm the channel listener so the next event is delivered.
 		return m, m.listenForScanProgress()
 
 	case scanCompleteMsg:
@@ -228,8 +179,6 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.err != nil {
 			m.err = msg.err
-			// Bubble a ScanFinishedMsg with the error so AppModel still
-			// transitions to stateResults where the error is displayed.
 			return m, func() tea.Msg {
 				return ScanFinishedMsg{Err: msg.err}
 			}
@@ -248,7 +197,6 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
 		}
 
-		// Build the history record for this scan.
 		now := time.Now()
 		run := models.AnalysisRun{
 			ID:                  uuid.New(),
@@ -264,9 +212,6 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		run.RepositoryName = &msg.path
 
 		entry := historyEntry{run: run, path: msg.path, issues: msg.issues}
-
-		// Emit ScanFinishedMsg. AppModel intercepts it, adds the entry to
-		// the shared history list, and transitions activeState to stateResults.
 		return m, func() tea.Msg { return ScanFinishedMsg{Entry: entry} }
 
 	case tea.KeyPressMsg:

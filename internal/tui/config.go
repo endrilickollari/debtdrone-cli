@@ -7,10 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Domain types (unchanged from before the refactor)
-// ─────────────────────────────────────────────────────────────────────────────
-
 type configMode int
 
 const (
@@ -24,8 +20,8 @@ type configItem struct {
 	Value       string
 	Type        string
 	Description string
-	Options     []string // predefined choices cycled with ←/→ or enter
-	IsOption    bool     // true → cycle Options instead of free-text edit
+	Options     []string
+	IsOption    bool
 }
 
 func defaultConfigItems() []configItem {
@@ -86,17 +82,7 @@ func defaultConfigItems() []configItem {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ConfigModel
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ConfigModel encapsulates all state and logic for the /config screen.
-//
-// Navigation contract: when the user presses esc or q while in navigate mode,
-// Update returns a command that yields NavigateMsg{State: stateMenu}. This
-// message bubbles up through the Bubble Tea runtime back to AppModel.Update,
-// where it is intercepted and actioned. ConfigModel never touches AppModel
-// state directly — it communicates only through messages.
+// ConfigModel manages the settings screen.
 type ConfigModel struct {
 	items       []configItem
 	cursor      int
@@ -116,9 +102,6 @@ func newConfigModel() *ConfigModel {
 	}
 }
 
-// Reset is called by AppModel.navigateTo when the user navigates to the
-// config screen. It resets cursor position and editing mode so the screen
-// always opens in a predictable state.
 func (m *ConfigModel) Reset() {
 	m.cursor = 0
 	m.offset = 0
@@ -126,8 +109,6 @@ func (m *ConfigModel) Reset() {
 	m.editBuffer = ""
 }
 
-// GetValue returns the current stored value for the given config key.
-// Called by AppModel when building ScanOptions from the current config.
 func (m *ConfigModel) GetValue(key string) string {
 	for _, item := range m.items {
 		if item.Key == key {
@@ -137,17 +118,8 @@ func (m *ConfigModel) GetValue(key string) string {
 	return ""
 }
 
-// Init satisfies tea.Model.
 func (m *ConfigModel) Init() tea.Cmd { return nil }
 
-// Update handles all input for the config screen.
-//
-// Messages that cross model boundaries:
-//   - tea.WindowSizeMsg  → cache dimensions for render()
-//   - tea.KeyPressMsg    → mutate local state; on esc/q return NavigateMsg cmd
-//
-// All other messages (e.g. tickMsg, scanProgressMsg) are silently ignored
-// because ConfigModel is only active when m.activeState == stateConfig.
 func (m *ConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
