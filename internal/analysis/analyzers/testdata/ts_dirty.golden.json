@@ -1,0 +1,11 @@
+{
+  "complexity_avg_cyclomatic": 8,
+  "complexity_critical_functions": 0,
+  "complexity_functions_analyzed": 1,
+  "complexity_high_functions": 0,
+  "complexity_max_cyclomatic": 8,
+  "complexity_total_debt_hours": 0,
+  "file_count": 1,
+  "issues": [],
+  "loc": 26
+}

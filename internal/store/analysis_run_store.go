@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -10,12 +11,17 @@ import (
 	"github.com/google/uuid"
 )
 
+
+
+
 type AnalysisRunStoreInterface interface {
 	Create(run *models.AnalysisRun) error
 	Get(id string) (*models.AnalysisRun, error)
-	List(limit, offset int) ([]models.AnalysisRun, error)
+	List(userID string, status string, limit, offset int) ([]models.AnalysisRun, error)
 	Update(run *models.AnalysisRun) error
 	UpdateStatus(ctx context.Context, runID uuid.UUID, status string, results map[string]interface{}) error
+	GetStatus(ctx context.Context, id string) (string, error)
+	GetBillableScanCount(orgID string, startOfMonth time.Time) (int64, error)
 }
 
 type DBAnalysisRunStore struct {
@@ -30,8 +36,8 @@ func (s *DBAnalysisRunStore) Create(run *models.AnalysisRun) error {
 	query := `
 		INSERT INTO analysis_runs (
 			id, user_id, repository_id, user_config_id, run_type, trigger_source,
-			started_at, status, analysis_config, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			started_at, status, analysis_config, commit_hash, branch, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
 	if run.ID == uuid.Nil {
@@ -43,7 +49,7 @@ func (s *DBAnalysisRunStore) Create(run *models.AnalysisRun) error {
 
 	_, err := s.db.Exec(query,
 		run.ID, run.UserID, run.RepositoryID, run.UserConfigID, run.RunType, run.TriggerSource,
-		run.StartedAt, run.Status, run.AnalysisConfig, run.CreatedAt, run.UpdatedAt,
+		run.StartedAt, run.Status, run.AnalysisConfig, run.CommitHash, run.Branch, run.CreatedAt, run.UpdatedAt,
 	)
 	return err
 }
@@ -54,7 +60,7 @@ func (s *DBAnalysisRunStore) Get(id string) (*models.AnalysisRun, error) {
 		       started_at, completed_at, duration_seconds, status, analysis_config,
 		       total_issues_found, critical_issues_count, high_issues_count, medium_issues_count, low_issues_count,
 		       total_technical_debt_hours, test_coverage_percentage, duplication_percentage,
-		       error_message, created_at, updated_at
+		       error_message, commit_hash, branch, created_at, updated_at
 		FROM analysis_runs
 		WHERE id = $1
 	`
@@ -65,30 +71,66 @@ func (s *DBAnalysisRunStore) Get(id string) (*models.AnalysisRun, error) {
 		&run.StartedAt, &run.CompletedAt, &run.DurationSeconds, &run.Status, &run.AnalysisConfig,
 		&run.TotalIssuesFound, &run.CriticalIssuesCount, &run.HighIssuesCount, &run.MediumIssuesCount, &run.LowIssuesCount,
 		&run.TotalTechnicalDebtHours, &run.TestCoveragePercentage, &run.DuplicationPercentage,
-		&run.ErrorMessage, &run.CreatedAt, &run.UpdatedAt,
+		&run.ErrorMessage, &run.CommitHash, &run.Branch, &run.CreatedAt, &run.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// Calculate Delta
+	prevRun, err := s.getPreviousRun(run.RepositoryID.String(), run.ID.String(), run.StartedAt)
+	if err == nil && prevRun != nil {
+		run.Delta = map[string]interface{}{
+			"debt_hours_change":     run.TotalTechnicalDebtHours - prevRun.TotalTechnicalDebtHours,
+			"critical_count_change": run.CriticalIssuesCount - prevRun.CriticalIssuesCount,
+			"new_issues":            0, // Placeholder: requires issue diffing, expensive for lists.
+			"fixed_issues":          0,
+		}
+	}
+
 	return &run, nil
 }
 
-func (s *DBAnalysisRunStore) List(limit, offset int) ([]models.AnalysisRun, error) {
-	query := `
+func (s *DBAnalysisRunStore) List(userID string, status string, limit, offset int) ([]models.AnalysisRun, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	baseQuery := `
 		SELECT
 			ar.id, ar.user_id, ar.repository_id, ar.user_config_id, ar.run_type, ar.trigger_source,
 			ar.started_at, ar.completed_at, ar.duration_seconds, ar.status, ar.analysis_config,
 			ar.total_issues_found, ar.critical_issues_count, ar.high_issues_count, ar.medium_issues_count, ar.low_issues_count,
 			ar.total_technical_debt_hours, ar.test_coverage_percentage, ar.duplication_percentage,
-			ar.error_message, ar.created_at, ar.updated_at,
+			ar.error_message, ar.commit_hash, ar.branch, ar.created_at, ar.updated_at,
 			r.name as repository_name, r.full_name as repository_full_name
 		FROM analysis_runs ar
 		LEFT JOIN user_repositories r ON ar.repository_id = r.id
-		ORDER BY ar.created_at DESC
-		LIMIT $1 OFFSET $2
+		WHERE EXISTS (
+			SELECT 1 FROM organization_members om
+			JOIN user_repositories ur ON ur.organization_id = om.organization_id
+			WHERE om.user_id = $1 AND ur.id = ar.repository_id
+		)
 	`
+	args := []interface{}{uid}
+	paramCount := 1
 
-	rows, err := s.db.Query(query, limit, offset)
+	if status != "" {
+		paramCount++
+		baseQuery += fmt.Sprintf(" AND ar.status = $%d", paramCount)
+		args = append(args, status)
+	}
+
+	paramCount++
+	baseQuery += fmt.Sprintf(" ORDER BY ar.created_at DESC LIMIT $%d", paramCount)
+	args = append(args, limit)
+
+	paramCount++
+	baseQuery += fmt.Sprintf(" OFFSET $%d", paramCount)
+	args = append(args, offset)
+
+	rows, err := s.db.Query(baseQuery, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -98,12 +140,13 @@ func (s *DBAnalysisRunStore) List(limit, offset int) ([]models.AnalysisRun, erro
 	for rows.Next() {
 		var run models.AnalysisRun
 		var repoName, repoFullName sql.NullString
+
 		err := rows.Scan(
 			&run.ID, &run.UserID, &run.RepositoryID, &run.UserConfigID, &run.RunType, &run.TriggerSource,
 			&run.StartedAt, &run.CompletedAt, &run.DurationSeconds, &run.Status, &run.AnalysisConfig,
 			&run.TotalIssuesFound, &run.CriticalIssuesCount, &run.HighIssuesCount, &run.MediumIssuesCount, &run.LowIssuesCount,
 			&run.TotalTechnicalDebtHours, &run.TestCoveragePercentage, &run.DuplicationPercentage,
-			&run.ErrorMessage, &run.CreatedAt, &run.UpdatedAt,
+			&run.ErrorMessage, &run.CommitHash, &run.Branch, &run.CreatedAt, &run.UpdatedAt,
 			&repoName, &repoFullName,
 		)
 		if err != nil {
@@ -117,7 +160,30 @@ func (s *DBAnalysisRunStore) List(limit, offset int) ([]models.AnalysisRun, erro
 		}
 		runs = append(runs, run)
 	}
+
 	return runs, nil
+}
+
+
+func (s *DBAnalysisRunStore) getPreviousRun(repoID, _ string, startedAt time.Time) (*models.AnalysisRun, error) {
+	query := `
+		SELECT total_technical_debt_hours, critical_issues_count
+		FROM analysis_runs
+		WHERE repository_id = $1
+		  AND status = 'completed'
+		  AND completed_at < $2
+		ORDER BY completed_at DESC
+		LIMIT 1
+	`
+	var run models.AnalysisRun
+	// We use startedAt of current run as the cutoff, assuming previous run completed before this one started.
+	// Or we can use the ID excluding itself if timestamps are close.
+	// Directive says "look up the previous scan".
+	err := s.db.QueryRow(query, repoID, startedAt).Scan(&run.TotalTechnicalDebtHours, &run.CriticalIssuesCount)
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
 }
 
 func (s *DBAnalysisRunStore) Update(run *models.AnalysisRun) error {
@@ -145,6 +211,19 @@ func (s *DBAnalysisRunStore) Update(run *models.AnalysisRun) error {
 
 func (s *DBAnalysisRunStore) UpdateStatus(ctx context.Context, runID uuid.UUID, status string, results map[string]interface{}) error {
 	now := time.Now()
+
+	// Extract commit hash and branch if present in results
+	var commitHash *string
+	var branch *string
+
+	if results != nil {
+		if v, ok := results["commit_hash"].(string); ok {
+			commitHash = &v
+		}
+		if v, ok := results["branch"].(string); ok {
+			branch = &v
+		}
+	}
 
 	if status == "completed" || status == "failed" {
 		var startedAt time.Time
@@ -229,8 +308,8 @@ func (s *DBAnalysisRunStore) UpdateStatus(ctx context.Context, runID uuid.UUID, 
 				errorMsg = &v
 			}
 
-			log.Printf("💾 Saving metrics - Issues: %d (C:%d H:%d M:%d L:%d), Debt: %.1fh",
-				totalIssues, criticalCount, highCount, mediumCount, lowCount, totalDebtHours)
+			log.Printf("💾 Saving metrics - Issues: %d (C:%d H:%d M:%d L:%d), Debt: %.1fh, Commit: %v",
+				totalIssues, criticalCount, highCount, mediumCount, lowCount, totalDebtHours, commitHash)
 		}
 
 		query := `
@@ -239,14 +318,16 @@ func (s *DBAnalysisRunStore) UpdateStatus(ctx context.Context, runID uuid.UUID, 
 				total_issues_found = $4, critical_issues_count = $5, high_issues_count = $6,
 				medium_issues_count = $7, low_issues_count = $8, total_technical_debt_hours = $9,
 				test_coverage_percentage = $10, duplication_percentage = $11, error_message = $12,
-				updated_at = $13
-			WHERE id = $14
+				commit_hash = COALESCE($13, commit_hash), branch = COALESCE($14, branch),
+				updated_at = $15
+			WHERE id = $16
 		`
 
 		_, err = s.db.ExecContext(ctx, query,
 			status, now, durationSeconds,
 			totalIssues, criticalCount, highCount, mediumCount, lowCount, totalDebtHours,
 			coveragePercent, duplicationPercent, errorMsg,
+			commitHash, branch,
 			now, runID,
 		)
 		return err
@@ -254,10 +335,45 @@ func (s *DBAnalysisRunStore) UpdateStatus(ctx context.Context, runID uuid.UUID, 
 
 	query := `
 		UPDATE analysis_runs
-		SET status = $1, updated_at = $2
-		WHERE id = $3
+		SET status = $1, 
+		    commit_hash = COALESCE($2, commit_hash), 
+		    branch = COALESCE($3, branch),
+		    updated_at = $4
+		WHERE id = $5
 	`
 
-	_, err := s.db.ExecContext(ctx, query, status, now, runID)
+	_, err := s.db.ExecContext(ctx, query, status, commitHash, branch, now, runID)
 	return err
+}
+
+func (s *DBAnalysisRunStore) GetBillableScanCount(orgID string, startOfMonth time.Time) (int64, error) {
+	orgUUID, err := uuid.Parse(orgID)
+	if err != nil {
+		return 0, err
+	}
+
+	query := `
+		SELECT COUNT(ar.id)
+		FROM analysis_runs ar
+		JOIN user_repositories ur ON ar.repository_id = ur.id
+		WHERE ur.organization_id = $1
+		  AND ar.created_at >= $2
+		  AND ar.status != 'failed'
+		  AND ar.run_type = 'manual'
+	`
+
+	var count int64
+	err = s.db.QueryRow(query, orgUUID, startOfMonth).Scan(&count)
+	if err != nil {
+		log.Printf("❌ [AnalysisStore] Failed to count billable scans: %v", err)
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (s *DBAnalysisRunStore) GetStatus(ctx context.Context, id string) (string, error) {
+	var status string
+	err := s.db.QueryRowContext(ctx, "SELECT status FROM analysis_runs WHERE id = $1", id).Scan(&status)
+	return status, err
 }

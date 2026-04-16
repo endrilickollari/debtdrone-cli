@@ -39,14 +39,13 @@ func (a *JavaScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 	functions := findJavaScriptFunctions(root, content)
 
 	for _, fn := range functions {
-		cyclomatic := calculateJSCyclomatic(fn.Node, content)
-		cognitive := calculateJSCognitive(fn.Node, content)
-		nesting := calculateJSNesting(fn.Node)
+		nodes := mapJavaScriptNodes(fn.Node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                   uuid.New(),
@@ -89,16 +88,18 @@ func traverseForJSFunctions(node *sitter.Node, content []byte, functions *[]func
 		if fn.name != "" {
 			*functions = append(*functions, fn)
 		}
-	case "function":
+	case "function_expression":
 		fn := extractJSFunction(node, content)
-		if fn.name != "" {
-			*functions = append(*functions, fn)
+		if fn.name == "" {
+			fn.name = "<anonymous>"
 		}
+		*functions = append(*functions, fn)
 	case "arrow_function":
 		fn := extractJSArrowFunction(node, content)
-		if fn.name != "" {
-			*functions = append(*functions, fn)
+		if fn.name == "" {
+			fn.name = "<anonymous>"
 		}
+		*functions = append(*functions, fn)
 	case "method_definition":
 		fn := extractJSMethodDefinition(node, content)
 		if fn.name != "" {
@@ -141,6 +142,7 @@ func extractJSFunction(node *sitter.Node, content []byte) functionInfo {
 	fn.endLine = int(node.EndPoint().Row) + 1
 	fn.body = node.Content(content)
 	fn.Node = node
+	fn.name = ""
 
 	parent := node.Parent()
 	if parent != nil && parent.Type() == "variable_declarator" {
@@ -171,6 +173,7 @@ func extractJSArrowFunction(node *sitter.Node, content []byte) functionInfo {
 	fn.endLine = int(node.EndPoint().Row) + 1
 	fn.body = node.Content(content)
 	fn.Node = node
+	fn.name = ""
 
 	parent := node.Parent()
 	if parent != nil {
@@ -244,29 +247,46 @@ func extractJSMethodDefinition(node *sitter.Node, content []byte) functionInfo {
 	return fn
 }
 
-func calculateJSCyclomatic(node *sitter.Node, content []byte) int {
-	complexity := 1
+func mapJavaScriptNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
+	var visit func(n *sitter.Node, depth int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
 
-	WalkTree(node, func(n *sitter.Node) {
-		nodeType := n.Type()
-		switch nodeType {
-		case "if_statement", "for_statement", "for_in_statement", "for_of_statement",
-			"while_statement", "do_statement", "switch_case", "catch_clause",
-			"ternary_expression":
-			complexity++
-		case "binary_expression":
-			for i := 0; i < int(n.ChildCount()); i++ {
-				child := n.Child(i)
-				op := child.Content(content)
-				if op == "&&" || op == "||" || op == "??" {
-					complexity++
-					break
+		newDepth := depth
+		if n.IsNamed() {
+			t := n.Type()
+			switch t {
+			case "if_statement", "switch_case", "catch_clause", "ternary_expression":
+				nodes = append(nodes, Node{Type: Branch, Depth: depth})
+				newDepth++
+			case "switch_statement":
+				nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+				newDepth++
+			case "for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement":
+				nodes = append(nodes, Node{Type: Loop, Depth: depth})
+				newDepth++
+			case "binary_expression", "assignment_expression":
+				for i := 0; i < int(n.ChildCount()); i++ {
+					child := n.Child(i)
+					op := child.Content(content)
+					if op == "&&" || op == "||" || op == "??" || op == "??=" || op == "&&=" || op == "||=" {
+						nodes = append(nodes, Node{Type: Operator, Depth: depth})
+						break
+					}
 				}
 			}
 		}
-	})
 
-	return complexity
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return nodes
 }
 
 func countJSParameters(paramsNode *sitter.Node) int {
@@ -288,56 +308,4 @@ func countJSParameters(paramsNode *sitter.Node) int {
 	return count
 }
 
-func calculateJSCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
 
-	WalkTree(node, func(n *sitter.Node) {
-		nodeType := n.Type()
-		switch nodeType {
-		case "if_statement", "for_statement", "for_in_statement", "for_of_statement",
-			"while_statement", "do_statement", "switch_case", "catch_clause":
-			complexity += 2
-		case "ternary_expression":
-			complexity += 1
-		case "binary_expression":
-
-			for i := 0; i < int(n.ChildCount()); i++ {
-				child := n.Child(i)
-				op := child.Content(content)
-				if op == "&&" || op == "||" || op == "??" {
-					complexity += 1
-					break
-				}
-			}
-		}
-	})
-
-	return complexity
-}
-
-func calculateJSNesting(node *sitter.Node) int {
-	maxDepth := 0
-	var visit func(*sitter.Node, int)
-	visit = func(n *sitter.Node, depth int) {
-		if n == nil {
-			return
-		}
-
-		newDepth := depth
-		t := n.Type()
-		switch t {
-		case "if_statement", "for_statement", "for_in_statement", "for_of_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
-			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
-			}
-		}
-
-		for i := 0; i < int(n.ChildCount()); i++ {
-			visit(n.Child(i), newDepth)
-		}
-	}
-
-	visit(node, 0)
-	return maxDepth
-}

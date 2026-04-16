@@ -7,9 +7,10 @@ builds:
     main: ./cmd/debtdrone
     binary: debtdrone
     env:
-      - CGO_ENABLED=1
-      - CC={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang{{ else }}oa64-clang{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-gcc{{ else }}aarch64-linux-gnu-gcc{{ end }}{{ else if eq .Os "windows" }}x86_64-w64-mingw32-gcc{{ end }}
-      - CXX={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang++{{ else }}oa64-clang++{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-g++{{ else }}aarch64-linux-gnu-g++{{ end }}{{ else if eq .Os "windows" }}x86_64-w64-mingw32-g++{{ end }}
+      # CGO_ENABLED=0 ensures the binary is statically linked. 
+      # This is critical for portability across Linux distributions 
+      # and ensures we have no external GLIBC dependencies.
+      - CGO_ENABLED=0
     goos:
       - linux
       - darwin
@@ -17,9 +18,6 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -30,10 +28,9 @@ builds:
 
 archives:
   - format: tar.gz
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64{{ else if eq .Arch "386" }}i386{{ else }}{{ .Arch }}{{ end }}
+    # The name_template is structured to be easily parsed by 
+    # github.com/creativeprojects/go-selfupdate.
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
@@ -60,86 +57,28 @@ changelog:
       - "README"
       - "Merge pull request"
       - "Merge branch"
-  groups:
-    - title: "New Features"
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-      order: 0
-    - title: "Bug Fixes"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-      order: 1
-    - title: "Performance Improvements"
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
-      order: 2
-    - title: "Other Changes"
-      order: 999
 
 release:
   github:
     owner: endrilickollari
     name: debtdrone-cli
-  
   draft: false
   prerelease: auto
   mode: replace
-  
-  header: |
-    ## 🚀 DebtDrone CLI {{ .Tag }}
 
-    > **Stop counting lines. Start fixing debt.**
-
-    ### 📦 Quick Install
-
-    **Homebrew (Recommended):**
-    ```bash
-    brew install endrilickollari/tap/debtdrone
-    ```
-
-    **Shell Script (Mac/Linux):**
-    ```bash
-    curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
-    ```
-
-    **PowerShell (Windows):**
-    ```powershell
-    iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.ps1 | iex
-    ```
-
-  footer: |
-    ---
-    ### 🔒 Verification
-    SHA256 checksums are available in `checksums.txt` below.
-
-    **Full Changelog**: https://github.com/endrilickollari/debtdrone-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
-
-announce:
-  skip: true
-
-# 7. Homebrew Tap Configuration
 brews:
   - name: debtdrone
-    
-    # Repository to push the formula to
     repository:
       owner: endrilickollari
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
-    
-    # URL template for downloading the binary
     url_template: "https://github.com/endrilickollari/debtdrone-cli/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    
-    # Git author for the commit to the tap repo
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    
-    # Folder inside the tap repo where the formula goes
     directory: Formula
-    
-    # Description and Homepage
     homepage: "https://github.com/endrilickollari/debtdrone"
     description: "Technical debt analysis tool for modern codebases."
     license: "MIT"
-    
-    # Test block to verify installation
     test: |
       system "#{bin}/debtdrone --version"

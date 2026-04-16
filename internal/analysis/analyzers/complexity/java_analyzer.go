@@ -46,15 +46,13 @@ func (a *JavaAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateJavaCyclomatic(fn.node, content)
-
-		cognitive := calculateJavaCognitive(fn.node, content)
-		nesting := calculateJavaNesting(fn.node)
+		nodes := mapJavaNodes(fn.node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                   uuid.New(),
@@ -104,6 +102,9 @@ func findJavaFunctions(root *sitter.Node, content []byte) ([]javaFunctionInfo, e
 				) @compact_constructor
 			)
 		)
+		(lambda_expression
+			body: (_) @body
+		) @lambda
 	`
 
 	q, err := sitter.NewQuery([]byte(queryStr), java.GetLanguage())
@@ -130,20 +131,21 @@ func findJavaFunctions(root *sitter.Node, content []byte) ([]javaFunctionInfo, e
 		for _, c := range m.Captures {
 			captureName := q.CaptureNameForId(c.Index)
 			switch captureName {
-			case "method", "constructor":
+			case "method", "constructor", "lambda":
 				fnNode = c.Node
-			case "name":
+			case "name", "record_name":
 				fnName = c.Node.Content(content)
 			case "compact_constructor":
 				fnNode = c.Node
-			case "record_name":
-				fnName = c.Node.Content(content)
 			case "body":
 				fnBodyNode = c.Node
 			}
 		}
 
-		if fnNode != nil && fnName != "" && fnBodyNode != nil {
+		if fnNode != nil && fnBodyNode != nil {
+			if fnName == "" {
+				fnName = "<lambda>"
+			}
 			paramCount = countJavaParameters(fnNode)
 
 			functions = append(functions, javaFunctionInfo{
@@ -177,89 +179,36 @@ func countJavaParameters(fnNode *sitter.Node) int {
 	return count
 }
 
-func calculateJavaCyclomatic(node *sitter.Node, content []byte) int {
-	complexity := 1
-	cursor := sitter.NewTreeCursor(node)
-	defer cursor.Close()
-
-	for {
-		n := cursor.CurrentNode()
-		nodeType := n.Type()
-
-		switch nodeType {
-		case "if_statement", "for_statement", "enhanced_for_statement",
-			"while_statement", "do_statement", "catch_clause", "ternary_expression":
-			complexity++
-		case "switch_label":
-			complexity++
-		case "binary_expression":
-			count := int(n.ChildCount())
-			for i := 0; i < count; i++ {
-				child := n.Child(i)
-				childContent := child.Content(content)
-				if childContent == "&&" || childContent == "||" {
-					complexity++
-				}
-			}
-		}
-
-		if cursor.GoToFirstChild() {
-			continue
-		}
-		if cursor.GoToNextSibling() {
-			continue
-		}
-		for cursor.GoToParent() {
-			if cursor.GoToNextSibling() {
-				goto NextSibling
-			}
-		}
-		break
-	NextSibling:
-	}
-
-	return complexity
-}
-
-func calculateJavaCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		nodeType := n.Type()
-		switch nodeType {
-		case "if_statement", "for_statement", "enhanced_for_statement",
-			"while_statement", "do_statement", "switch_label", "catch_clause":
-			complexity += 2
-		case "binary_expression":
-			for i := 0; i < int(n.ChildCount()); i++ {
-				child := n.Child(i)
-				childContent := child.Content(content)
-				if childContent == "&&" || childContent == "||" {
-					complexity += 1
-					break
-				}
-			}
-		}
-	})
-
-	return complexity
-}
-
-func calculateJavaNesting(node *sitter.Node) int {
-	maxDepth := 0
-	var visit func(*sitter.Node, int)
+func mapJavaNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
+	var visit func(n *sitter.Node, depth int)
 	visit = func(n *sitter.Node, depth int) {
 		if n == nil {
 			return
 		}
 
 		newDepth := depth
-		t := n.Type()
-		switch t {
-		case "if_statement", "for_statement", "enhanced_for_statement", "while_statement", "do_statement", "switch_expression", "switch_statement", "catch_clause":
+		nodeType := n.Type()
+
+		switch nodeType {
+		case "if_statement", "switch_label", "catch_clause", "ternary_expression":
+			nodes = append(nodes, Node{Type: Branch, Depth: depth})
 			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
+		case "switch_expression", "switch_statement":
+			nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+			newDepth++
+		case "for_statement", "enhanced_for_statement", "while_statement", "do_statement":
+			nodes = append(nodes, Node{Type: Loop, Depth: depth})
+			newDepth++
+		case "binary_expression":
+			count := int(n.ChildCount())
+			for i := 0; i < count; i++ {
+				child := n.Child(i)
+				childContent := child.Content(content)
+				if childContent == "&&" || childContent == "||" {
+					nodes = append(nodes, Node{Type: Operator, Depth: depth})
+					break
+				}
 			}
 		}
 
@@ -269,5 +218,7 @@ func calculateJavaNesting(node *sitter.Node) int {
 	}
 
 	visit(node, 0)
-	return maxDepth
+	return nodes
 }
+
+

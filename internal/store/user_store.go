@@ -13,6 +13,7 @@ var (
 	ErrUserNotFound      = errors.New("user not found")
 	ErrUserAlreadyExists = errors.New("user already exists")
 	ErrAccountLocked     = errors.New("account is temporarily locked")
+	ErrNoPersonalOrg     = errors.New("user has no personal organization")
 )
 
 type UserStoreInterface interface {

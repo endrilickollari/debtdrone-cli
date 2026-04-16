@@ -74,7 +74,7 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*ana
 	}
 
 	if _, err := exec.LookPath("trivy"); err != nil {
-		log.Println("⚠️  Trivy not installed - skipping security scan. Install with: brew install aquasecurity/trivy/trivy")
+		log.Println("⚠️  Trivy not installed - skipping security scan. Install with: brew install aquasec/trivy/trivy")
 		return &analysis.Result{
 			Issues: []models.TechnicalDebtIssue{},
 			Metrics: map[string]interface{}{

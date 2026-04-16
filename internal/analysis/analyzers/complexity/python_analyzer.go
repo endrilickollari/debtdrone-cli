@@ -41,14 +41,14 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	functions := findPythonFunctions(root, content)
 
 	for _, fn := range functions {
-		cyclomatic := calculatePythonCyclomatic(fn.Node)
-		cognitive := calculatePythonCognitive(fn.Node)
-		nesting := calculatePythonNesting(fn.Node)
+		nodes := mapPythonNodes(fn.Node)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		// Use full function code for AI fixes - extract up to 10000 chars
+		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                   uuid.New(),
@@ -90,6 +90,9 @@ func traverseForFunctions(node *sitter.Node, content []byte, functions *[]functi
 		if fn.name != "" {
 			*functions = append(*functions, fn)
 		}
+	} else if nodeType == "lambda" {
+		fn := extractPythonLambda(node, content)
+		*functions = append(*functions, fn)
 	}
 
 	for i := 0; i < int(node.ChildCount()); i++ {
@@ -126,22 +129,59 @@ func extractPythonFunction(node *sitter.Node, content []byte) functionInfo {
 	return fn
 }
 
-func calculatePythonCyclomatic(node *sitter.Node) int {
-	complexity := 1
+func extractPythonLambda(node *sitter.Node, content []byte) functionInfo {
+	var fn functionInfo
 
-	WalkTree(node, func(n *sitter.Node) {
-		switch n.Type() {
-		case "if_statement", "elif_clause",
-			"for_statement", "while_statement",
-			"except_clause", "case_clause",
-			"conditional_expression":
-			complexity++
-		case "boolean_operator":
-			complexity++
+	fn.line = int(node.StartPoint().Row) + 1
+	fn.endLine = int(node.EndPoint().Row) + 1
+	fn.Node = node
+	fn.name = "<lambda>"
+	fn.body = node.Content(content)
+
+	for i := 0; i < int(node.ChildCount()); i++ {
+		child := node.Child(i)
+		if child.Type() == "lambda_parameters" {
+			fn.paramCount = countPythonParameters(child, content)
+			break
 		}
-	})
+	}
 
-	return complexity
+	return fn
+}
+
+func mapPythonNodes(node *sitter.Node) []Node {
+	var nodes []Node
+	var visit func(n *sitter.Node, depth int)
+	visit = func(n *sitter.Node, depth int) {
+		if n == nil {
+			return
+		}
+
+		newDepth := depth
+		t := n.Type()
+
+		switch t {
+		case "if_statement", "elif_clause", "except_clause", "case_clause", "conditional_expression", "match_statement":
+			nodes = append(nodes, Node{Type: Branch, Depth: depth})
+			newDepth++
+		case "for_statement", "while_statement":
+			nodes = append(nodes, Node{Type: Loop, Depth: depth})
+			newDepth++
+		case "try_statement":
+			// try block adds nesting but not a branch by itself usually, but we can treat as nesting.
+			nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+			newDepth++
+		case "boolean_operator":
+			nodes = append(nodes, Node{Type: Operator, Depth: depth})
+		}
+
+		for i := 0; i < int(n.ChildCount()); i++ {
+			visit(n.Child(i), newDepth)
+		}
+	}
+
+	visit(node, 0)
+	return nodes
 }
 
 func countPythonParameters(paramsNode *sitter.Node, content []byte) int {
@@ -186,47 +226,4 @@ func countPythonParameters(paramsNode *sitter.Node, content []byte) int {
 	}
 
 	return count
-}
-
-func calculatePythonCognitive(node *sitter.Node) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		switch n.Type() {
-		case "if_statement", "for_statement", "while_statement", "try_statement", "elif_clause", "except_clause":
-			complexity += 2
-		case "boolean_operator":
-			complexity += 1
-		}
-	})
-
-	return complexity
-}
-
-func calculatePythonNesting(node *sitter.Node) int {
-	maxDepth := 0
-	var visit func(*sitter.Node, int)
-	visit = func(n *sitter.Node, depth int) {
-		if n == nil {
-			return
-		}
-
-		newDepth := depth
-		t := n.Type()
-
-		switch t {
-		case "if_statement", "for_statement", "while_statement", "match_statement", "except_clause":
-			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
-			}
-		}
-
-		for i := 0; i < int(n.ChildCount()); i++ {
-			visit(n.Child(i), newDepth)
-		}
-	}
-
-	visit(node, 0)
-	return maxDepth
 }

@@ -62,3 +62,52 @@ func (s *InMemoryIssueStore) Update(issue *models.TechnicalDebtIssue) error {
 func (s *InMemoryIssueStore) IssueExists(repositoryID uuid.UUID, filePath string, lineNumber *int, issueType string, toolRuleID *string) (bool, error) {
 	return false, nil
 }
+
+func (s *InMemoryIssueStore) TouchExistingIssue(repositoryID uuid.UUID, analysisRunID uuid.UUID, filePath string, lineNumber *int, issueType string, toolRuleID *string) error {
+	return nil
+}
+
+func (s *InMemoryIssueStore) ResolveMissingIssues(repositoryID uuid.UUID, currentAnalysisRunID uuid.UUID, resolutionReason string) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (s *InMemoryIssueStore) GetOpenIssueSummary(repositoryID uuid.UUID) (*store.OpenIssueSummary, error) {
+	return &store.OpenIssueSummary{}, nil
+}
+
+func (s *InMemoryIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid.UUID, analyzerName string, newIssues []models.TechnicalDebtIssue) (int, int, error) {
+	// In-memory implementation: simple clear and replace
+	deleted := 0
+	remaining := []models.TechnicalDebtIssue{}
+	for _, issue := range s.Issues {
+		if issue.RepositoryID == repositoryID && issue.ToolName == analyzerName && issue.Status == "open" {
+			deleted++
+		} else {
+			remaining = append(remaining, issue)
+		}
+	}
+	s.Issues = append(remaining, newIssues...)
+	return deleted, len(newIssues), nil
+}
+
+func (s *InMemoryIssueStore) UpdateExternalLink(issueID uuid.UUID, externalID, platform, externalURL string) error {
+	for i, issue := range s.Issues {
+		if issue.ID == issueID {
+			s.Issues[i].ExternalID = &externalID
+			s.Issues[i].ExternalPlatform = &platform
+			s.Issues[i].ExternalURL = &externalURL
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *InMemoryIssueStore) GetByExternalLink(platform, externalID string) (*models.TechnicalDebtIssue, error) {
+	for _, issue := range s.Issues {
+		if issue.ExternalPlatform != nil && issue.ExternalID != nil &&
+			*issue.ExternalPlatform == platform && *issue.ExternalID == externalID {
+			return &issue, nil
+		}
+	}
+	return nil, nil
+}

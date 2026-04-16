@@ -2,132 +2,97 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers/security"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store/memory"
-	"github.com/google/uuid"
-	"github.com/schollz/progressbar/v3"
+	"github.com/endrilickollari/debtdrone-cli/internal/tui"
+	"github.com/endrilickollari/debtdrone-cli/internal/update"
+	"github.com/spf13/cobra"
 )
 
+// Build-time variables injected by the linker via -ldflags.
 var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
 )
 
-func checkDependencies() {
-	if _, err := exec.LookPath("git"); err != nil {
-		fmt.Fprintln(os.Stderr, "❌ Error: git is required but not installed.")
-		os.Exit(1)
+// runAutoUpdate checks GitHub for a newer release and offers an interactive
+// upgrade prompt. It is called from the root command's RunE so it only fires
+// when the user launches the TUI, never during a headless scan.
+func runAutoUpdate() {
+	ctx := context.Background()
+	info, err := update.CheckForUpdate(ctx, version)
+	if err != nil {
+		return
 	}
+	if info.Available {
+		fmt.Printf("🔔 New version available: %s\n", info.Version)
+		fmt.Print("Would you like to update now? (y/n): ")
 
-	if _, err := exec.LookPath("trivy"); err != nil {
-		fmt.Fprintln(os.Stderr, "⚠️  Trivy not found. Security scanning will be skipped.")
+		var response string
+		fmt.Scanln(&response)
+
+		if response == "y" || response == "Y" {
+			fmt.Println("🔄 Updating...")
+			if err := update.PerformUpdate(ctx); err != nil {
+				fmt.Printf("❌ Update failed: %v\n", err)
+			} else {
+				fmt.Println("✅ Update installed! Please restart the application.")
+				os.Exit(0)
+			}
+		}
 	}
 }
 
 func main() {
+	// ── Root command ──────────────────────────────────────────────────────
+	//
+	// Cobra routing: when the user runs 'debtdrone' with no subcommand,
+	// cobra finds no matching child and falls back to rootCmd.RunE. We
+	// exploit this to make the interactive TUI the natural default while
+	// still exposing 'debtdrone scan' as a first-class headless path.
+	//
+	// If the user runs 'debtdrone scan [path]', cobra matches that subcommand
+	// and never calls rootCmd.RunE at all — so the TUI is never started.
+	rootCmd := &cobra.Command{
+		Use:   "debtdrone",
+		Short: "DebtDrone — Technical Debt Analyzer",
+		Long: `DebtDrone is a technical debt analyzer for your codebase.
 
-	versionFlag := flag.Bool("version", false, "Print the version and exit")
-	targetDir := flag.String("path", ".", "Path to the repository to analyze")
-	failOn := flag.String("fail-on", "high", "Fail exit code if issues found with severity >= (low, medium, high, critical, none)")
-	outputFormat := flag.String("output", "text", "Output format (text, json)")
-	flag.Parse()
+Run without arguments to open the interactive TUI, where you can scan
+repositories, browse results, manage configuration, and view scan history.
 
-	if *versionFlag {
-		fmt.Fprintf(os.Stderr, "debtdrone version %s, commit %s, built at %s\n", version, commit, date)
-		os.Exit(0)
+For CI/CD pipelines and scripted workflows, use the 'scan' subcommand:
+
+  debtdrone scan ./myproject --format json`,
+
+		// SilenceUsage prevents cobra from dumping the full usage block
+		// alongside every RunE error — the error message is enough.
+		SilenceUsage: true,
+
+		// RunE is the TUI entry point. It is only reached when no subcommand
+		// is provided (pure 'debtdrone' invocation).
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Offer an update prompt before entering the TUI so the user
+			// is never surprised by a stale binary during interactive use.
+			runAutoUpdate()
+
+			fmt.Println("Starting DebtDrone TUI...")
+			return tui.RunTUI()
+		},
 	}
 
-	checkDependencies()
+	// Expose 'debtdrone --version' / '-v'. Cobra handles printing and
+	// exiting automatically when this flag is present.
+	rootCmd.Version = fmt.Sprintf("%s (commit %s, built at %s)", version, commit, date)
 
-	if len(flag.Args()) > 0 {
-		*targetDir = flag.Args()[0]
-	}
+	// ── Subcommands ───────────────────────────────────────────────────────
+	rootCmd.AddCommand(newScanCmd(), newInitCmd(), newConfigCmd(), newHistoryCmd())
 
-	if *outputFormat == "json" {
-		log.SetOutput(ioutil.Discard)
-	}
-
-	absPath, err := filepath.Abs(*targetDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to resolve path: %v\n", err)
+	// Execute parses os.Args, routes to the matching command, and prints any
+	// error to stderr. We only need to set the exit code here.
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
-	}
-
-	if *outputFormat == "text" {
-		printBanner()
-		fmt.Fprintf(os.Stderr, "🔍 Scanning repository at: %s\n", absPath)
-	}
-
-	complexityStore := memory.NewInMemoryComplexityStore()
-
-	lineCounter := analyzers.NewLineCounter()
-	complexityAnalyzer := analyzers.NewComplexityAnalyzer(complexityStore)
-	trivyAnalyzer := security.NewTrivyAnalyzer()
-
-	gitService := git.NewService()
-	repo, err := gitService.OpenLocal(absPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to open repository: %v\n", err)
-		os.Exit(1)
-	}
-
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, "analysisRunID", uuid.New())
-	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
-	ctx = context.WithValue(ctx, "userID", uuid.New())
-	ctx = context.WithValue(ctx, "isCLI", true)
-
-	var allIssues []models.TechnicalDebtIssue
-
-	analyzersList := []analysis.Analyzer{lineCounter, complexityAnalyzer, trivyAnalyzer}
-
-	var bar *progressbar.ProgressBar
-	if *outputFormat == "text" {
-		bar = startSpinner(len(analyzersList), "Analysing repository structure...")
-	}
-
-	for _, analyzer := range analyzersList {
-		result, err := analyzer.Analyze(ctx, repo)
-		if err != nil {
-		} else {
-			allIssues = append(allIssues, result.Issues...)
-		}
-
-		if bar != nil {
-			bar.Add(1)
-		}
-	}
-
-	if bar != nil {
-		bar.Finish()
-		fmt.Fprintln(os.Stderr)
-	}
-
-	printReport(allIssues, *outputFormat)
-
-	if shouldFail(allIssues, *failOn) {
-		fmt.Fprintln(os.Stderr, "\n❌ Quality Gate failed: Technical debt threshold exceeded.")
-		os.Exit(1)
-	}
-
-	if *outputFormat == "text" {
-		if len(allIssues) > 0 {
-			fmt.Fprintf(os.Stderr, "\n⚠️  Scan completed with %d issues.\n", len(allIssues))
-		} else {
-			fmt.Fprintln(os.Stderr, "\n✅ Scan passed. No issues found.")
-		}
 	}
 }

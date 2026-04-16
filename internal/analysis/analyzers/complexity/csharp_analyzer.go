@@ -2,6 +2,7 @@ package complexity
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/internal/models"
@@ -41,15 +42,14 @@ func (a *CSharpAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 	functions := findCSharpFunctions(root, content)
 
 	for _, fn := range functions {
-		cyclomatic := calculateCSharpCyclomatic(fn.Node, content)
-		cognitive := calculateCSharpCognitive(fn.Node, content)
-		nesting := calculateCSharpNesting(fn.Node)
+		nodes := mapCSharpNodes(fn.Node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.BodyContent, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.BodyContent, 300)
+		snippetStr := truncateSnippet(fn.BodyContent, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                   uuid.New(),
@@ -85,8 +85,14 @@ func findCSharpFunctions(root *sitter.Node, content []byte) []cSharpFunctionInfo
 	(method_declaration name: (_) @name body: (_) @body)
 	(local_function_statement name: (_) @name body: (_) @body)
 	(constructor_declaration name: (_) @name body: (_) @body)
+	(lambda_expression) @lambda
+	(anonymous_method_expression) @lambda
 	`
-	q, _ := sitter.NewQuery([]byte(queryStr), csharp.GetLanguage())
+	q, err := sitter.NewQuery([]byte(queryStr), csharp.GetLanguage())
+	if err != nil {
+		fmt.Printf("Tree-Sitter query parse error: %v\n", err)
+		return nil
+	}
 	qc := sitter.NewQueryCursor()
 	defer qc.Close()
 	defer q.Close()
@@ -99,7 +105,7 @@ func findCSharpFunctions(root *sitter.Node, content []byte) []cSharpFunctionInfo
 			break
 		}
 
-		var nameNode, bodyNode *sitter.Node
+		var nameNode, bodyNode, parent *sitter.Node
 
 		for _, c := range match.Captures {
 			name := q.CaptureNameForId(c.Index)
@@ -107,17 +113,29 @@ func findCSharpFunctions(root *sitter.Node, content []byte) []cSharpFunctionInfo
 				nameNode = c.Node
 			} else if name == "body" {
 				bodyNode = c.Node
+			} else if name == "lambda" {
+				// lambda node itself
+				parent = c.Node
 			}
 		}
 
-		if nameNode == nil || bodyNode == nil {
+		if bodyNode == nil && parent == nil {
 			continue
+		}
+		if bodyNode == nil {
+			bodyNode = parent
+		}
+
+		funcName := "<lambda>"
+		if nameNode != nil {
+			funcName = nameNode.Content(content)
+			if nameNode.Parent() != nil {
+				parent = nameNode.Parent()
+			}
 		}
 
 		paramCount := 0
-		var parent *sitter.Node
-		if nameNode.Parent() != nil {
-			parent = nameNode.Parent()
+		if parent != nil {
 			paramList := parent.ChildByFieldName("parameters")
 			if paramList != nil {
 				paramCount = countCSharpParameters(paramList)
@@ -125,7 +143,7 @@ func findCSharpFunctions(root *sitter.Node, content []byte) []cSharpFunctionInfo
 		}
 
 		functions = append(functions, cSharpFunctionInfo{
-			Name:        nameNode.Content(content),
+			Name:        funcName,
 			Node:        parent,
 			BodyContent: bodyNode.Content(content),
 			ParamCount:  paramCount,
@@ -146,63 +164,12 @@ func countCSharpParameters(paramList *sitter.Node) int {
 	return count
 }
 
-func calculateCSharpCyclomatic(node *sitter.Node, content []byte) int {
-	complexity := 1
+func mapCSharpNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
 	if node == nil {
-		return complexity
+		return nodes
 	}
 
-	var visit func(*sitter.Node)
-	visit = func(n *sitter.Node) {
-		t := n.Type()
-		switch t {
-		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "catch_clause", "conditional_expression":
-			complexity++
-		case "case_switch_label":
-			complexity++
-		case "binary_expression":
-			op := n.ChildByFieldName("operator")
-			if op != nil {
-				opStr := op.Content(content)
-				if opStr == "&&" || opStr == "||" || opStr == "??" {
-					complexity++
-				}
-			}
-		}
-
-		for i := 0; i < int(n.NamedChildCount()); i++ {
-			visit(n.NamedChild(i))
-		}
-	}
-
-	visit(node)
-	return complexity
-}
-
-func calculateCSharpCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		t := n.Type()
-		switch t {
-		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "case_switch_label", "catch_clause":
-			complexity += 2
-		case "binary_expression":
-			op := n.ChildByFieldName("operator")
-			if op != nil {
-				opStr := op.Content(content)
-				if opStr == "&&" || opStr == "||" || opStr == "??" {
-					complexity += 1
-				}
-			}
-		}
-	})
-
-	return complexity
-}
-
-func calculateCSharpNesting(node *sitter.Node) int {
-	maxDepth := 0
 	var visit func(*sitter.Node, int)
 	visit = func(n *sitter.Node, depth int) {
 		if n == nil {
@@ -212,10 +179,22 @@ func calculateCSharpNesting(node *sitter.Node) int {
 		newDepth := depth
 		t := n.Type()
 		switch t {
-		case "if_statement", "for_statement", "foreach_statement", "while_statement", "do_statement", "switch_statement", "catch_clause":
+		case "if_statement", "catch_clause", "conditional_expression", "case_switch_label":
+			nodes = append(nodes, Node{Type: Branch, Depth: depth})
 			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
+		case "switch_statement":
+			nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+			newDepth++
+		case "for_statement", "foreach_statement", "while_statement", "do_statement":
+			nodes = append(nodes, Node{Type: Loop, Depth: depth})
+			newDepth++
+		case "binary_expression":
+			op := n.ChildByFieldName("operator")
+			if op != nil {
+				opStr := op.Content(content)
+				if opStr == "&&" || opStr == "||" || opStr == "??" {
+					nodes = append(nodes, Node{Type: Operator, Depth: depth})
+				}
 			}
 		}
 
@@ -225,5 +204,5 @@ func calculateCSharpNesting(node *sitter.Node) int {
 	}
 
 	visit(node, 0)
-	return maxDepth
+	return nodes
 }

@@ -127,7 +127,7 @@ fn complex_logic(x: i32) -> i32 {
 `,
 			expectedFunctions: []string{"complex_logic"},
 			expectedCyclomatic: map[string]int{
-				"complex_logic": 14,
+				"complex_logic": 13,
 			},
 			expectedParams: map[string]int{
 				"complex_logic": 1,

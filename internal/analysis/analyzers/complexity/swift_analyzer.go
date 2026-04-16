@@ -47,10 +47,8 @@ func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.C
 	}
 
 	for _, fn := range functions {
-		cyclomatic := calculateSwiftCyclomatic(fn.node, content)
-
-		cognitive := calculateSwiftCognitive(fn.node, content)
-		nesting := calculateSwiftNesting(fn.node)
+		nodes := mapSwiftNodes(fn.node, content)
+		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
@@ -58,7 +56,7 @@ func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.C
 		suggestions := generateSwiftRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.paramCount, loc)
 
 		cognitivePtr := cognitive
-		snippetStr := truncateSnippet(fn.body, 300)
+		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
 			ID:                     uuid.New(),
@@ -107,6 +105,8 @@ func findSwiftFunctions(root *sitter.Node, content []byte) ([]swiftFunctionInfo,
 		(deinit_declaration
 			body: (_) @body
 		) @deinit
+
+		(lambda_literal) @lambda
 	`
 
 	q, err := sitter.NewQuery([]byte(queryStr), swift.GetLanguage())
@@ -134,7 +134,7 @@ func findSwiftFunctions(root *sitter.Node, content []byte) ([]swiftFunctionInfo,
 		for _, c := range m.Captures {
 			captureName := q.CaptureNameForId(c.Index)
 			switch captureName {
-			case "function":
+			case "function", "lambda":
 				fnNode = c.Node
 			case "init":
 				fnNode = c.Node
@@ -149,12 +149,18 @@ func findSwiftFunctions(root *sitter.Node, content []byte) ([]swiftFunctionInfo,
 			}
 		}
 
-		if fnNode != nil && fnBodyNode != nil {
+		if fnNode != nil {
+			if fnBodyNode == nil {
+				fnBodyNode = fnNode
+			}
+
 			if fnName == "" {
 				if fnNode.Type() == "init_declaration" {
 					fnName = "init"
 				} else if fnNode.Type() == "deinit_declaration" {
 					fnName = "deinit"
+				} else {
+					fnName = "<closure>"
 				}
 			}
 
@@ -209,92 +215,33 @@ func countParamsInClause(node *sitter.Node) int {
 	return c
 }
 
-func calculateSwiftCyclomatic(node *sitter.Node, content []byte) int {
-	complexity := 1
-	cursor := sitter.NewTreeCursor(node)
-	defer cursor.Close()
-
-	for {
-		n := cursor.CurrentNode()
-
-		if n.IsNamed() {
-			nodeType := n.Type()
-
-			switch nodeType {
-			case "if_statement":
-				complexity++
-			case "guard_statement":
-				complexity++
-			case "for_statement":
-				complexity++
-			case "while_statement", "repeat_while_statement":
-				complexity++
-			case "switch_entry":
-				complexity++
-			case "catch_clause":
-				complexity++
-			case "conjunction_expression":
-				complexity++
-			case "disjunction_expression":
-				complexity++
-			case "ternary_expression":
-				complexity++
-			case "nil_coalescing_expression":
-				complexity++
-			case "optional_chaining_expression":
-				complexity++
-			}
-		}
-
-		if cursor.GoToFirstChild() {
-			continue
-		}
-		if cursor.GoToNextSibling() {
-			continue
-		}
-		for cursor.GoToParent() {
-			if cursor.GoToNextSibling() {
-				goto NextSibling
-			}
-		}
-		break
-	NextSibling:
-	}
-
-	return complexity
-}
-
-func calculateSwiftCognitive(node *sitter.Node, content []byte) int {
-	complexity := 0
-
-	WalkTree(node, func(n *sitter.Node) {
-		nodeType := n.Type()
-		switch nodeType {
-		case "if_statement", "guard_statement", "switch_statement", "while_statement", "repeat_while_statement", "for_statement", "do_statement", "catch_clause":
-			complexity += 2
-		case "conjunction_expression", "disjunction_expression":
-			complexity += 1
-		}
-	})
-
-	return complexity
-}
-
-func calculateSwiftNesting(node *sitter.Node) int {
-	maxDepth := 0
-	var visit func(*sitter.Node, int)
+func mapSwiftNodes(node *sitter.Node, content []byte) []Node {
+	var nodes []Node
+	var visit func(n *sitter.Node, depth int)
 	visit = func(n *sitter.Node, depth int) {
 		if n == nil {
 			return
 		}
 
 		newDepth := depth
-		t := n.Type()
-		switch t {
-		case "if_statement", "for_statement", "while_statement", "do_statement", "catch_clause", "switch_statement":
-			newDepth++
-			if newDepth > maxDepth {
-				maxDepth = newDepth
+		if n.IsNamed() {
+			nodeType := n.Type()
+
+			switch nodeType {
+			case "if_statement", "guard_statement", "switch_entry", "catch_clause", "ternary_expression":
+				nodes = append(nodes, Node{Type: Branch, Depth: depth})
+				newDepth++
+			case "switch_statement":
+				nodes = append(nodes, Node{Type: Nesting, Depth: depth})
+				newDepth++
+			case "for_statement", "while_statement", "repeat_while_statement":
+				nodes = append(nodes, Node{Type: Loop, Depth: depth})
+				newDepth++
+			case "conjunction_expression", "disjunction_expression", "nil_coalescing_expression", "optional_chaining_expression":
+				nodes = append(nodes, Node{Type: Operator, Depth: depth})
+			case "lambda_literal":
+				nodes = append(nodes, Node{Type: Closure, Depth: depth})
+				newDepth++
 			}
 		}
 
@@ -304,8 +251,10 @@ func calculateSwiftNesting(node *sitter.Node) int {
 	}
 
 	visit(node, 0)
-	return maxDepth
+	return nodes
 }
+
+
 
 func generateSwiftRefactoringSuggestions(cyclomatic, cognitive, nesting, paramCount, loc int) []models.RefactoringSuggestion {
 	var suggestions []models.RefactoringSuggestion
