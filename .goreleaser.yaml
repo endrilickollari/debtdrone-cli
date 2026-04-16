@@ -8,8 +8,6 @@ builds:
     binary: debtdrone
     env:
       - CGO_ENABLED=1
-      # To fix the 'no such instruction' error, we must provide the correct cross-compiler
-      # for each target OS/Arch when CGO is enabled.
       - CC={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang{{ else }}oa64-clang{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-gcc{{ else }}aarch64-linux-gnu-gcc{{ end }}{{ else if eq .Os "windows" }}x86_64-w64-mingw32-gcc{{ end }}
       - CXX={{ if eq .Os "darwin" }}{{ if eq .Arch "amd64" }}o64-clang++{{ else }}oa64-clang++{{ end }}{{ else if eq .Os "linux" }}{{ if eq .Arch "amd64" }}x86_64-linux-gnu-g++{{ else }}aarch64-linux-gnu-g++{{ end }}{{ else if eq .Os "windows" }}x86_64-w64-mingw32-g++{{ end }}
     goos:
