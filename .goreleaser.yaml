@@ -7,10 +7,7 @@ builds:
     main: ./cmd/debtdrone
     binary: debtdrone
     env:
-      # CGO_ENABLED=0 ensures the binary is statically linked. 
-      # This is critical for portability across Linux distributions 
-      # and ensures we have no external GLIBC dependencies.
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - linux
       - darwin
@@ -28,8 +25,6 @@ builds:
 
 archives:
   - format: tar.gz
-    # The name_template is structured to be easily parsed by 
-    # github.com/creativeprojects/go-selfupdate.
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
