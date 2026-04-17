@@ -1,0 +1,51 @@
+site_name: DebtDrone CLI
+site_description: A lightning-fast, dual-mode technical debt analyzer for developers and CI/CD pipelines.
+site_url: https://endrilickollari.github.io/debtdrone-cli/
+repo_name: endrilickollari/debtdrone-cli
+repo_url: https://github.com/endrilickollari/debtdrone-cli
+edit_uri: blob/main/docs/
+
+theme:
+  name: material
+  language: en
+  logo: assets/DebtDroneLogo.png
+  favicon: assets/DebtDroneLogo.png
+  features:
+    - navigation.tabs
+    - navigation.instant
+    - navigation.tracking
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: light blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: light blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: installation.md
+      - Configuration: configuration.md
+  - User Guides:
+      - Interactive TUI: tui-usage.md
+      - CI/CD & Headless CLI: headless-usage.md
+  - Reference:
+      - System Architecture: architecture.md
