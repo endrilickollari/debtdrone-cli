@@ -3,7 +3,7 @@ package complexity
 import (
 	"testing"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/stretchr/testify/assert"
 )
 

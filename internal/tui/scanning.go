@@ -12,8 +12,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/service"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -60,14 +60,14 @@ func startScan(path string, maxComplexity int, securityScan bool, progressChan c
 
 			log.SetOutput(os.Stderr)
 
-			if err != nil {
-				progressChan <- scanCompleteMsg{path: path, err: err}
+			if err != nil && (!service.IsPartialFailure(err) || len(issues) == 0) {
+				progressChan <- scanCompleteMsg{path: path, issues: issues, err: err}
 				return
 			}
 
 			progressChan <- scanProgressMsg{Task: "Finalizing results...", Progress: 1.0}
 			time.Sleep(500 * time.Millisecond)
-			progressChan <- scanCompleteMsg{path: path, issues: issues}
+			progressChan <- scanCompleteMsg{path: path, issues: issues, err: err}
 		}()
 		return nil
 	}
@@ -76,7 +76,7 @@ func startScan(path string, maxComplexity int, securityScan bool, progressChan c
 type scanPhase int
 
 const (
-	scanIdle    scanPhase = iota
+	scanIdle scanPhase = iota
 	scanRunning
 	scanResults
 )
@@ -91,10 +91,11 @@ type ScanModel struct {
 	scanChan     chan tea.Msg
 	outputFormat string
 
-	err    error
-	issues []models.TechnicalDebtIssue
-	list   issueList
-	detail issueViewport
+	err     error
+	warning error
+	issues  []models.TechnicalDebtIssue
+	list    issueList
+	detail  issueViewport
 
 	width, height int
 }
@@ -116,6 +117,7 @@ func (m *ScanModel) Start(path string, maxComplexity int, securityScan bool, out
 	m.spinnerFrame = 0
 	m.outputFormat = outputFormat
 	m.err = nil
+	m.warning = nil
 	m.issues = nil
 	m.scanChan = make(chan tea.Msg, 10)
 
@@ -132,6 +134,7 @@ func (m *ScanModel) LoadResults(entry historyEntry, outputFormat string) {
 	m.scanPath = entry.path
 	m.outputFormat = outputFormat
 	m.err = nil
+	m.warning = nil
 	m.issues = entry.issues
 
 	listH, detailH := splitHeight(m.height)
@@ -177,13 +180,14 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scanCompleteMsg:
 		m.phase = scanResults
 
-		if msg.err != nil {
+		if msg.err != nil && len(msg.issues) == 0 {
 			m.err = msg.err
 			return m, func() tea.Msg {
 				return ScanFinishedMsg{Err: msg.err}
 			}
 		}
 
+		m.warning = msg.err
 		m.issues = msg.issues
 		listH, detailH := splitHeight(m.height)
 		m.list = newIssueList(msg.issues, m.width, listH)
@@ -356,10 +360,20 @@ func (m *ScanModel) renderResults() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
 	}
 
+	var results string
 	if m.outputFormat == "json" {
-		return m.renderJSONResults()
+		results = m.renderJSONResults()
+	} else {
+		results = m.renderTextResults()
 	}
-	return m.renderTextResults()
+	if m.warning == nil {
+		return results
+	}
+	warning := lipgloss.NewStyle().
+		Foreground(colorHigh).
+		Bold(true).
+		Render("Partial scan: ") + lipgloss.NewStyle().Foreground(colorDim).Render(m.warning.Error())
+	return lipgloss.JoinVertical(lipgloss.Left, warning, results)
 }
 
 func (m *ScanModel) renderTextResults() string {

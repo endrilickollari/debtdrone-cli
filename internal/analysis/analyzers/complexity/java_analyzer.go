@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/google/uuid"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
@@ -220,5 +220,3 @@ func mapJavaNodes(node *sitter.Node, content []byte) []Node {
 	visit(node, 0)
 	return nodes
 }
-
-

@@ -1,8 +1,8 @@
 package memory
 
 import (
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/store"
 	"github.com/google/uuid"
 )
 

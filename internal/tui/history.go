@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 )
 
 // historyEntry bundles everything needed to re-display or replay a past scan.

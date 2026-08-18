@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
 	"github.com/google/uuid"
 )
 
@@ -57,7 +57,7 @@ type TrivySecret struct {
 	Match     string `json:"Match"`
 }
 
-func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*analysis.Result, error) {
+func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*scancore.Result, error) {
 	analysisRunID, ok := ctx.Value("analysisRunID").(uuid.UUID)
 	if !ok {
 		return nil, fmt.Errorf("analysisRunID not found in context")
@@ -75,7 +75,7 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*ana
 
 	if _, err := exec.LookPath("trivy"); err != nil {
 		log.Println("⚠️  Trivy not installed - skipping security scan. Install with: brew install aquasec/trivy/trivy")
-		return &analysis.Result{
+		return &scancore.Result{
 			Issues: []models.TechnicalDebtIssue{},
 			Metrics: map[string]interface{}{
 				"security_issues_count": 0,
@@ -87,7 +87,7 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*ana
 
 	if repo.Path == "" {
 		log.Println("⚠️  Trivy requires filesystem path - skipping in-memory repository")
-		return &analysis.Result{
+		return &scancore.Result{
 			Issues: []models.TechnicalDebtIssue{},
 			Metrics: map[string]interface{}{
 				"security_issues_count": 0,
@@ -193,7 +193,7 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*ana
 		"trivy_available":       true,
 	}
 
-	return &analysis.Result{
+	return &scancore.Result{
 		Issues:  issues,
 		Metrics: metrics,
 	}, nil

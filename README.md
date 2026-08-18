@@ -50,7 +50,7 @@ iwr -useb https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/i
 
 **Via Go Install:**
 ```bash
-go install github.com/endrilickollari/debtdrone-cli/cmd/debtdrone@latest
+go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
 ```
 
 **Via Pre-compiled Binaries:**

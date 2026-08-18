@@ -176,10 +176,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25'
 
       - name: Install DebtDrone
-        run: go install github.com/endrilickollari/debtdrone-cli/cmd/debtdrone@latest
+        run: go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
 
       - name: Run debt analysis
         run: debtdrone scan . --format=json --fail-on=high | tee debt-report.json

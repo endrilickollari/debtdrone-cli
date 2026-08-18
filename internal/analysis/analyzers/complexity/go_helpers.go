@@ -94,7 +94,7 @@ func extractCodeSnippet(fset *token.FileSet, node ast.Node, content []byte) stri
 	}
 
 	funcLines := lines[startPos.Line-1 : endPos.Line]
-	
+
 	// Truncate massively large functions arbitrarily at 1000 lines just as a safety net
 	if len(funcLines) > 1000 {
 		funcLines = funcLines[:1000]

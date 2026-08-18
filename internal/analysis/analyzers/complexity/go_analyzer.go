@@ -6,7 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 )
 
 // GoAnalyzer analyzes Go code for complexity metrics

@@ -1,18 +1,8 @@
 package analysis
 
-import (
-	"context"
+import "github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-)
-
-type Result struct {
-	Issues  []models.TechnicalDebtIssue
-	Metrics map[string]interface{}
-}
-
-type Analyzer interface {
-	Name() string
-	Analyze(ctx context.Context, repo *git.Repository) (*Result, error)
-}
+// Compatibility aliases. New scanner code uses the infrastructure-free
+// scancore package so importing the public scanner does not pull in caching.
+type Result = scancore.Result
+type Analyzer = scancore.Analyzer

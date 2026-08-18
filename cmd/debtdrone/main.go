@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/tui"
-	"github.com/endrilickollari/debtdrone-cli/internal/update"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/tui"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/update"
 	"github.com/spf13/cobra"
 )
 

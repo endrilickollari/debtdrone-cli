@@ -6,10 +6,10 @@ DebtDrone ships as a single static binary with no runtime dependencies. Choose t
 
 ## Option 1 — `go install`
 
-If you have Go 1.21 or later on your `PATH`, this is the fastest path to a working installation:
+If you have Go 1.25 or later on your `PATH`, this is the fastest path to a working installation:
 
 ```bash
-go install github.com/endrilickollari/debtdrone-cli/cmd/debtdrone@latest
+go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
 ```
 
 The binary is placed in `$(go env GOPATH)/bin`. Ensure that directory is on your `PATH`:

@@ -60,7 +60,7 @@ Every finding is assigned a severity of **critical**, **high**, **medium**, or *
 
 ```bash
 # Install via go install
-go install github.com/endrilickollari/debtdrone-cli/cmd/debtdrone@latest
+go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
 
 # Explore your codebase interactively
 debtdrone
