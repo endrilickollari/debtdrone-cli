@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/service"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -48,9 +49,9 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 			}
 
 			// Execute the scan synchronously (no progress bars in headless mode)
-			issues, err := svc.Run(ctx, absPath, opts, nil)
-			if err != nil {
-				return fmt.Errorf("scan failed: %w", err)
+			issues, scanErr := svc.Run(ctx, absPath, opts, nil)
+			if scanErr != nil && !service.IsPartialFailure(scanErr) {
+				return fmt.Errorf("scan failed: %w", scanErr)
 			}
 
 			// 3. Output Formatting
@@ -83,12 +84,19 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 					if issueSeverity, exists := severityMap[strings.ToLower(issue.Severity)]; exists {
 						if issueSeverity >= requestedThreshold {
 							// Return a custom error that Cobra will handle
-							return fmt.Errorf("quality gate failed: found issues matching or exceeding severity '%s'", failOn)
+							gateErr := fmt.Errorf("quality gate failed: found issues matching or exceeding severity '%s'", failOn)
+							if scanErr != nil {
+								return errors.Join(fmt.Errorf("scan completed with partial results: %w", scanErr), gateErr)
+							}
+							return gateErr
 						}
 					}
 				}
 			}
 
+			if scanErr != nil {
+				return fmt.Errorf("scan completed with partial results: %w", scanErr)
+			}
 			return nil
 		},
 	}
@@ -121,7 +129,7 @@ func printText(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 
 	// Initialize tabwriter for a clean columnar layout
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
-	
+
 	// Print Header
 	fmt.Fprintln(w, "SEVERITY\tFILE:LINE\tRULE\tMESSAGE")
 	fmt.Fprintln(w, "--------\t---------\t----\t-------")
@@ -140,7 +148,7 @@ func printText(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 		}
 
 		// Print Row
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", 
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 			strings.ToUpper(issue.Severity),
 			location,
 			rule,

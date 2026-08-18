@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/go-git/go-billy/v5"
 )
 

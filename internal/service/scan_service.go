@@ -2,14 +2,11 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"time"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers/security"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store/memory"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/scanner"
 	"github.com/google/uuid"
 )
 
@@ -24,57 +21,56 @@ type ScanProgress struct {
 	Total        int
 }
 
-type ScanService struct {
-	gitService *git.Service
-}
+type ScanService struct{}
 
-func NewScanService() *ScanService {
-	return &ScanService{
-		gitService: git.NewService(),
-	}
+func NewScanService() *ScanService { return &ScanService{} }
+
+func IsPartialFailure(err error) bool {
+	var partial *scanner.PartialFailureError
+	return errors.As(err, &partial)
 }
 
 func (s *ScanService) Run(ctx context.Context, path string, opts ScanOptions, onProgress func(ScanProgress)) ([]models.TechnicalDebtIssue, error) {
-	repo, err := s.gitService.OpenLocal(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open repository: %w", err)
-	}
-
-	complexityStore := memory.NewInMemoryComplexityStore()
-	lineCounter := analyzers.NewLineCounter()
-	complexityAnalyzer := analyzers.NewComplexityAnalyzer(complexityStore)
-
-	analyzersList := []analysis.Analyzer{lineCounter, complexityAnalyzer}
-	if opts.SecurityScan {
-		analyzersList = append(analyzersList, security.NewTrivyAnalyzer())
-	}
-
-	// Enrich context
-	ctx = context.WithValue(ctx, "analysisRunID", uuid.New())
-	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
-	ctx = context.WithValue(ctx, "userID", uuid.New())
-	ctx = context.WithValue(ctx, "complexityConfig", models.ComplexityConfig{
-		CyclomaticThreshold: opts.MaxComplexity,
+	report, scanErr := scanner.Scan(ctx, path, scanner.Options{
+		Scope:      scanner.FullScan(),
+		Complexity: scanner.ComplexityOptions{Enabled: true, MaxCyclomatic: opts.MaxComplexity},
+		Security:   scanner.SecurityOptions{Enabled: opts.SecurityScan},
+		OnProgress: func(event scanner.ProgressEvent) {
+			if onProgress != nil && event.Phase == scanner.ProgressStarted {
+				onProgress(ScanProgress{AnalyzerName: event.AnalyzerName, Index: event.Index, Total: event.Total})
+			}
+		},
 	})
 
-	var allIssues []models.TechnicalDebtIssue
-	total := len(analyzersList)
-
-	for i, analyzer := range analyzersList {
-		if onProgress != nil {
-			onProgress(ScanProgress{
-				AnalyzerName: analyzer.Name(),
-				Index:        i,
-				Total:        total,
-			})
-		}
-
-		result, err := analyzer.Analyze(ctx, repo)
-		if err != nil {
-			continue
-		}
-		allIssues = append(allIssues, result.Issues...)
+	issues := make([]models.TechnicalDebtIssue, 0, len(report.Findings))
+	now := time.Now()
+	userID, repositoryID, analysisRunID := uuid.New(), uuid.New(), uuid.New()
+	for _, finding := range report.Findings {
+		issues = append(issues, models.TechnicalDebtIssue{
+			ID:                 uuid.New(),
+			UserID:             userID,
+			RepositoryID:       repositoryID,
+			AnalysisRunID:      analysisRunID,
+			FilePath:           finding.Location.Path,
+			LineNumber:         finding.Location.Line,
+			ColumnNumber:       finding.Location.Column,
+			IssueType:          finding.Type,
+			Severity:           finding.Severity,
+			Category:           finding.Category,
+			Message:            finding.Message,
+			Description:        finding.Description,
+			ToolName:           finding.AnalyzerID,
+			ToolRuleID:         finding.RuleID,
+			ConfidenceScore:    finding.Confidence,
+			TechnicalDebtHours: finding.EstimatedDebtHours,
+			EffortMultiplier:   finding.EffortMultiplier,
+			Status:             "open",
+			CodeSnippet:        finding.CodeSnippet,
+			FingerprintHash:    finding.Fingerprint,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		})
 	}
 
-	return allIssues, nil
+	return issues, scanErr
 }

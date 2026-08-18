@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis/analyzers"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +22,7 @@ import (
 func TestEngine_Golden(t *testing.T) {
 	// 1. Setup Analyzers
 	// Pass nil for store as we are only testing analysis logic, not persistence
-	complexityAnalyzer := analyzers.NewComplexityAnalyzer(nil)
+	complexityAnalyzer := analyzers.NewComplexityAnalyzer()
 	lineCounter := analyzers.NewLineCounter()
 
 	analyzersList := []analysis.Analyzer{
@@ -215,10 +215,10 @@ func TestEngine_PanicRecovery(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			// Simulate the Engine's exact wrapper call mapping
 			result, err := analysis.ExecuteAnalyzerSafeTest(ctx, analyzer, repo)
-			
+
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

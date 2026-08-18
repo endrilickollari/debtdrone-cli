@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/endrilickollari/debtdrone-cli/internal/update"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/update"
 )
 
 type updatePhase int

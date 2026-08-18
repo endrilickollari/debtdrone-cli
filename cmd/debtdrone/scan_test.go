@@ -2,16 +2,35 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func createRootWithScan() *cobra.Command {
 	root := &cobra.Command{Use: "debtdrone"}
 	root.AddCommand(newScanCmd())
 	return root
+}
+
+func TestScanCmd_PrintsPartialResultsBeforeReturningAnalyzerError(t *testing.T) {
+	testRepo := setupTestRepo(t)
+	binDir := t.TempDir()
+	trivyPath := filepath.Join(binDir, "trivy")
+	require.NoError(t, os.WriteFile(trivyPath, []byte("#!/bin/sh\nprintf 'invalid trivy output'\nexit 1\n"), 0o700))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := createRootWithScan()
+	output, err := executeCommand(root, "scan", testRepo, "--format", "json", "--security-scan=true")
+	require.ErrorContains(t, err, "scan completed with partial results")
+	jsonOutput := strings.SplitN(output, "\nError:", 2)[0]
+	assert.True(t, json.Valid([]byte(jsonOutput)), "partial scan stdout must remain valid JSON: %s", jsonOutput)
+	assert.Contains(t, jsonOutput, "complexity")
 }
 
 func TestScanCmd_QualityGate(t *testing.T) {
@@ -79,7 +98,7 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 	t.Run("--format=json", func(t *testing.T) {
 		root := createRootWithScan()
 		output, err := executeCommand(root, "scan", testRepo, "--format", "json")
-		
+
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -97,7 +116,7 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 	t.Run("--format=text", func(t *testing.T) {
 		root := createRootWithScan()
 		output, err := executeCommand(root, "scan", testRepo, "--format", "text")
-		
+
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}

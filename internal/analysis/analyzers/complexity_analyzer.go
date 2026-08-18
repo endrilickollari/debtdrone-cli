@@ -9,28 +9,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis/analyzers/complexity"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
-	"github.com/endrilickollari/debtdrone-cli/internal/models"
-	"github.com/endrilickollari/debtdrone-cli/internal/store"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis/analyzers/complexity"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
 	"github.com/google/uuid"
 )
 
 // ComplexityAnalyzer implements the Analyzer interface for complexity analysis
 type ComplexityAnalyzer struct {
-	factory         *complexity.Factory
-	complexityStore store.ComplexityStoreInterface
+	factory *complexity.Factory
 }
 
 // NewComplexityAnalyzer creates a new complexity analyzer
-func NewComplexityAnalyzer(complexityStore store.ComplexityStoreInterface) *ComplexityAnalyzer {
+func NewComplexityAnalyzer() *ComplexityAnalyzer {
 	thresholds := models.DefaultComplexityThresholds()
 	factory := complexity.NewFactory(thresholds)
 
 	return &ComplexityAnalyzer{
-		factory:         factory,
-		complexityStore: complexityStore,
+		factory: factory,
 	}
 }
 
@@ -40,7 +37,7 @@ func (a *ComplexityAnalyzer) Name() string {
 }
 
 // Analyze performs complexity analysis on the repository
-func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*analysis.Result, error) {
+func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*scancore.Result, error) {
 	analysisRunID, ok := ctx.Value("analysisRunID").(uuid.UUID)
 	if !ok {
 		return nil, fmt.Errorf("analysisRunID not found in context")
@@ -163,7 +160,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		if ctx.Value("isCLI") != true {
 			log.Printf("❌ Error walking repository: %v", err)
 		}
-		return &analysis.Result{
+		return &scancore.Result{
 			Issues:  []models.TechnicalDebtIssue{},
 			Metrics: map[string]interface{}{},
 		}, err
@@ -191,7 +188,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 	issues := a.convertToIssues(allMetrics)
 	summary := a.calculateSummary(allMetrics)
 
-	return &analysis.Result{
+	return &scancore.Result{
 		Issues:  issues,
 		Metrics: summary,
 	}, nil

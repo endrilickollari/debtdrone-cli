@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis"
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

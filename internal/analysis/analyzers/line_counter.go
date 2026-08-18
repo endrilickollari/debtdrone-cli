@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/analysis"
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
 )
 
 type LineCounter struct{}
@@ -20,9 +20,16 @@ func (a *LineCounter) Name() string {
 	return "LineCounter"
 }
 
-func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*analysis.Result, error) {
+func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*scancore.Result, error) {
 	var totalLines int64
 	var fileCount int64
+	var targetFiles map[string]struct{}
+	if files, ok := ctx.Value("targetFiles").([]string); ok {
+		targetFiles = make(map[string]struct{}, len(files))
+		for _, file := range files {
+			targetFiles[file] = struct{}{}
+		}
+	}
 
 	err := filepath.Walk(repo.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -33,6 +40,16 @@ func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*analy
 				return filepath.SkipDir
 			}
 			return nil
+		}
+		if targetFiles != nil {
+			relative, relErr := filepath.Rel(repo.Path, path)
+			if relErr != nil {
+				return relErr
+			}
+			relative = "/" + filepath.ToSlash(relative)
+			if _, included := targetFiles[relative]; !included {
+				return nil
+			}
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
@@ -56,7 +73,7 @@ func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*analy
 		return nil, err
 	}
 
-	return &analysis.Result{
+	return &scancore.Result{
 		Issues: nil,
 		Metrics: map[string]interface{}{
 			"loc":        totalLines,

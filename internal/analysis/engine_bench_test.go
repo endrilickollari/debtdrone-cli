@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/endrilickollari/debtdrone-cli/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/google/uuid"
 )
 
