@@ -55,7 +55,6 @@ func TestCCppAnalyzer_AnalyzeFile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, metrics, 4)
 
-	// Helper to find metric by function name
 	findMetric := func(name string) *models.ComplexityMetric {
 		for _, m := range metrics {
 			if m.FunctionName == name {

@@ -19,12 +19,19 @@ type Scope struct {
 	Files []string
 }
 
+// FullScan discovers source files below the repository root, excluding known
+// generated directories and files that fail the bounded safety policy.
 func FullScan() Scope { return Scope{Mode: ScopeFull} }
 
+// IncrementalScan restricts file-based analyzers to the supplied repository
+// paths. An empty list is invalid; a list containing only filtered files is a
+// valid empty scan and never falls back to FullScan.
 func IncrementalScan(files []string) Scope {
 	return Scope{Mode: ScopeIncremental, Files: append([]string(nil), files...)}
 }
 
+// NoChanges explicitly represents an empty delta and returns without opening
+// the repository or invoking analyzers.
 func NoChanges() Scope { return Scope{Mode: ScopeNoChanges} }
 
 type ComplexityOptions struct {

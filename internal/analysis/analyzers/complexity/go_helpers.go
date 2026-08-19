@@ -51,7 +51,6 @@ func mapGoNodes(body *ast.BlockStmt) []Node {
 	return nodes
 }
 
-// countParameters counts the number of parameters in a function
 func countParameters(funcType *ast.FuncType) int {
 	if funcType.Params == nil {
 		return 0
@@ -67,7 +66,6 @@ func countParameters(funcType *ast.FuncType) int {
 	return count
 }
 
-// extractReceiverType extracts the receiver type name
 func extractReceiverType(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.StarExpr:
@@ -79,7 +77,6 @@ func extractReceiverType(expr ast.Expr) string {
 	}
 }
 
-// extractCodeSnippet extracts a limited code snippet for the function
 func extractCodeSnippet(fset *token.FileSet, node ast.Node, content []byte) string {
 	startPos := fset.Position(node.Pos())
 	endPos := fset.Position(node.End())
@@ -95,7 +92,7 @@ func extractCodeSnippet(fset *token.FileSet, node ast.Node, content []byte) stri
 
 	funcLines := lines[startPos.Line-1 : endPos.Line]
 
-	// Truncate massively large functions arbitrarily at 1000 lines just as a safety net
+	// Bound snippets independently of the repository file-size policy.
 	if len(funcLines) > 1000 {
 		funcLines = funcLines[:1000]
 		funcLines = append(funcLines, "... // Code snippet truncated (exceeded 1000 lines limit)")

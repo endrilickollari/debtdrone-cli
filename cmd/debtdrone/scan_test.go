@@ -107,7 +107,6 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 			t.Errorf("Output is not valid JSON:\n%s", output)
 		}
 
-		// Basic sanity check that it's an array of issues
 		if !strings.HasPrefix(strings.TrimSpace(output), "[") {
 			t.Errorf("JSON output should be an array, got:\n%s", output)
 		}
@@ -128,7 +127,6 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 			}
 		}
 
-		// Assert it found the issue in our dirty file
 		if !strings.Contains(output, "CRITICAL") && !strings.Contains(output, "HIGH") {
 			t.Errorf("Text output should contain found issues. Got:\n%s", output)
 		}

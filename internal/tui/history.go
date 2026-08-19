@@ -110,19 +110,15 @@ func (m *HistoryModel) handleKey(str string) (tea.Model, tea.Cmd) {
 			break
 		}
 		entry := m.entries[m.cursor]
-		// Emit LoadHistoryRunMsg. AppModel intercepts it, hydrates ScanModel
-		// with the historical data, and transitions to stateResults.
 		return m, func() tea.Msg { return LoadHistoryRunMsg{Entry: entry} }
 	}
 	return m, nil
 }
 
-// View satisfies tea.Model.
 func (m *HistoryModel) View() tea.View {
 	return tea.NewView(m.render())
 }
 
-// render produces the history screen string.
 func (m *HistoryModel) render() string {
 	listPane := m.renderList()
 

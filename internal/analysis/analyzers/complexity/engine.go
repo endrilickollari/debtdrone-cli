@@ -7,7 +7,7 @@ const (
 	Loop     ComplexityNodeType = "loop"     // for, while, do
 	Closure  ComplexityNodeType = "closure"  // lambdas, blocks
 	Operator ComplexityNodeType = "operator" // boolean operators (&&, ||)
-	Nesting  ComplexityNodeType = "nesting"  // Blocks that add cognitive nesting but aren't loops/branches (though those usually add nesting anyway)
+	Nesting  ComplexityNodeType = "nesting"  // nesting-only block
 )
 
 type Node struct {
@@ -25,14 +25,12 @@ func CalculateComplexity(nodes []Node) (cyclomatic int, cognitive int, nesting i
 		switch n.Type {
 		case Branch, Loop, Closure:
 			cyclomatic++
-			// Cognitive Complexity calculation: 1 base point + the current nesting depth
 			cognitive += (1 + n.Depth)
 		case Operator:
 			cyclomatic++
 			cognitive++
 		case Nesting:
-			// Nesting itself doesn't add cyclomatic, but affects the maximum depth
-			// Wait, the depth increment is natively processed by the standard nodes (Branch/Loop/Operator).
+			// Nesting affects only the maximum depth below.
 		}
 
 		if n.Depth > nesting {

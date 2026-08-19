@@ -59,7 +59,6 @@ func (s *Service) Clone(ctx context.Context, opts CloneOptions) (*Repository, er
 		storer = memory.NewStorage()
 		fs = memfs.New()
 	} else {
-		// Check disk space before cloning to filesystem
 		if err := CheckDiskSpace(os.TempDir()); err != nil {
 			log.Printf("❌ [GitService] Disk space check failed: %v", err)
 			return nil, err
@@ -205,7 +204,6 @@ type CommitContext struct {
 }
 
 func (s *Service) GetCommitMetadata(ctx context.Context, repoPath string, hash string) (*CommitContext, error) {
-	// If hash is empty, default to HEAD
 	if hash == "" {
 		hash = "HEAD"
 	}

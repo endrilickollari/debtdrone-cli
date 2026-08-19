@@ -3,10 +3,16 @@ package scanner
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
+	gitservice "github.com/endrilickollari/debtdrone-cli/v2/internal/git"
+	"github.com/go-git/go-billy/v5"
+	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,6 +116,13 @@ func TestScanNoChangesDoesNotOpenRepository(t *testing.T) {
 	assert.Empty(t, report.Failures)
 }
 
+func TestNoChangesSkipsUnavailableOptionalCapabilities(t *testing.T) {
+	report, err := Scan(context.Background(), "/path/that/does/not/exist", Options{Scope: NoChanges(), Coverage: CoverageOptions{Enabled: true}})
+	require.NoError(t, err)
+	assert.Empty(t, report.Findings)
+	assert.Empty(t, report.Metrics)
+}
+
 func TestScanRejectsUnavailableCoverageCapability(t *testing.T) {
 	_, err := Scan(context.Background(), ".", Options{Coverage: CoverageOptions{Enabled: true}})
 	require.EqualError(t, err, "coverage scanning is not available until Phase 2")
@@ -124,6 +137,29 @@ func TestScanReturnsNeutralMetrics(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, report.Metrics, "line_counter")
 	assert.EqualValues(t, 3, metricValue(t, report.Metrics["line_counter"], "loc"))
+}
+
+func TestScanReturnsCancellationDuringTargetPreparation(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "main.go", "package main\n"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := Scan(ctx, root, Options{})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestPrepareTargetFilesSurfacesTraversalErrors(t *testing.T) {
+	fs := memfs.New()
+	file, err := fs.Create("broken.go")
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	walkErr := errors.New("permission denied")
+	repo := &gitservice.Repository{FS: failingLstatFilesystem{Filesystem: fs, target: "/broken.go", err: walkErr}}
+
+	_, _, err = prepareTargetFiles(context.Background(), repo, FullScan())
+	require.ErrorIs(t, err, walkErr)
+	require.ErrorContains(t, err, "discover repository files")
 }
 
 func TestIncrementalScanScopesBuiltInAnalyzers(t *testing.T) {
@@ -144,6 +180,105 @@ func TestIncrementalScanRejectsFilesOutsideRepository(t *testing.T) {
 	outside := filepath.Join(filepath.Dir(root), "outside.go")
 	_, err := Scan(context.Background(), root, Options{Scope: IncrementalScan([]string{outside})})
 	require.ErrorContains(t, err, "outside repository root")
+}
+
+func TestIncrementalScanRejectsPortableTraversal(t *testing.T) {
+	root := t.TempDir()
+	_, err := Scan(context.Background(), root, Options{Scope: IncrementalScan([]string{`..\outside.go`})})
+	require.ErrorContains(t, err, "outside repository root")
+}
+
+func TestIncrementalScanRejectsWindowsAbsolutePathOnOtherPlatforms(t *testing.T) {
+	root := t.TempDir()
+	_, err := Scan(context.Background(), root, Options{Scope: IncrementalScan([]string{`C:\outside.go`})})
+	if runtime.GOOS == "windows" {
+		require.ErrorContains(t, err, "outside repository root")
+		return
+	}
+	require.ErrorContains(t, err, "absolute path for a different platform")
+}
+
+func TestIncrementalScanRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.go")
+	require.NoError(t, os.WriteFile(outside, []byte("package outside\n"), 0o644))
+	link := filepath.Join(root, "linked.go")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := Scan(context.Background(), root, Options{Scope: IncrementalScan([]string{"linked.go"})})
+	require.ErrorContains(t, err, "resolves outside repository root")
+}
+
+func TestIncrementalScanNormalizesWindowsSeparators(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "nested/main.go", "package nested\n"))
+
+	report, err := Scan(context.Background(), root, Options{Scope: IncrementalScan([]string{`nested\main.go`})})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, metricValue(t, report.Metrics["line_counter"], "file_count"))
+}
+
+func TestIncrementalScanWithOnlyFilteredFilesStaysEmpty(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "main.go", "package main\n\nfunc main() {}\n"))
+	require.NoError(t, writeTestFile(root, "assets/logo.png", "not an image\n"))
+
+	report, err := Scan(context.Background(), root, Options{
+		Scope:      IncrementalScan([]string{"assets/logo.png"}),
+		Complexity: ComplexityOptions{Enabled: true},
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, metricValue(t, report.Metrics["line_counter"], "file_count"))
+	assert.EqualValues(t, 0, metricValue(t, report.Metrics["line_counter"], "loc"))
+	assert.Empty(t, report.Findings, "an empty safe target set must not fall back to a full scan")
+}
+
+func TestIncrementalScanExcludesExplicitGeneratedPath(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "main.go", "package main\n"))
+	require.NoError(t, writeTestFile(root, "node_modules/generated.js", "generated();\n"))
+
+	report, err := Scan(context.Background(), root, Options{Scope: IncrementalScan([]string{"node_modules/generated.js"})})
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, metricValue(t, report.Metrics["line_counter"], "file_count"))
+	assert.Empty(t, report.Warnings)
+}
+
+func TestFullScanFiltersGeneratedAssetsAndUnsafeFiles(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "src/main.go", "package main\n\nfunc main() {}\n"))
+	require.NoError(t, writeTestFile(root, "node_modules/generated.js", "generated();\n"))
+	require.NoError(t, writeTestFile(root, "dist/bundle.js", "bundled();\n"))
+	require.NoError(t, writeTestFile(root, "assets/logo.png", "not an image\n"))
+
+	oversized := filepath.Join(root, "oversized.go")
+	file, err := os.Create(oversized)
+	require.NoError(t, err)
+	require.NoError(t, file.Truncate(filepolicy.MaxFileSize+1))
+	require.NoError(t, file.Close())
+
+	report, err := Scan(context.Background(), root, Options{Complexity: ComplexityOptions{Enabled: true}})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, metricValue(t, report.Metrics["line_counter"], "file_count"))
+	require.Len(t, report.Warnings, 1)
+	assert.Equal(t, "scanner", report.Warnings[0].AnalyzerID)
+	assert.Contains(t, report.Warnings[0].Message, "/oversized.go skipped: file exceeds maximum size limit")
+}
+
+func TestFullScanDoesNotFollowSymlinks(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "main.go", "package main\n"))
+	outside := filepath.Join(t.TempDir(), "outside.go")
+	require.NoError(t, os.WriteFile(outside, []byte("package outside\n"), 0o644))
+	if err := os.Symlink(outside, filepath.Join(root, "linked.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	report, err := Scan(context.Background(), root, Options{})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, metricValue(t, report.Metrics["line_counter"], "file_count"))
 }
 
 func TestFingerprintIgnoresVolatileLineMessageAndWhitespace(t *testing.T) {
@@ -168,6 +303,19 @@ func (metadataPanicAnalyzer) Analyze(context.Context) (AnalyzerResult, error) {
 
 type cancelAwareAnalyzer struct {
 	started chan<- struct{}
+}
+
+type failingLstatFilesystem struct {
+	billy.Filesystem
+	target string
+	err    error
+}
+
+func (fs failingLstatFilesystem) Lstat(path string) (os.FileInfo, error) {
+	if filepath.ToSlash(path) == fs.target {
+		return nil, fs.err
+	}
+	return fs.Filesystem.Lstat(path)
 }
 
 func (cancelAwareAnalyzer) ID() string   { return "cancel_aware" }

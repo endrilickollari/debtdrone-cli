@@ -12,20 +12,18 @@ import (
 type updatePhase int
 
 const (
-	updateChecking  updatePhase = iota
+	updateChecking updatePhase = iota
 	updatePrompt
 	updateInstalling
 	updateSuccess
 	updateError
 )
 
-// checkUpdateMsg is the result of the update-check.
 type checkUpdateMsg struct {
 	info *update.UpdateInfo
 	err  error
 }
 
-// updateCompleteMsg is the result of the install.
 type updateCompleteMsg struct{ err error }
 
 // UpdateModel manages the auto-update screen.
@@ -119,12 +117,10 @@ func (m *UpdateModel) handleKey(str string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View satisfies tea.Model.
 func (m *UpdateModel) View() tea.View {
 	return tea.NewView(m.render())
 }
 
-// render produces the update-screen modal.
 func (m *UpdateModel) render() string {
 	const modalWidth = 80
 	const innerWidth = modalWidth - 8
@@ -253,10 +249,6 @@ func (m *UpdateModel) render() string {
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Async helpers (pure functions; no model state)
-// ─────────────────────────────────────────────────────────────────────────────
 
 func startUpdateCheck() tea.Msg {
 	info, err := update.CheckForUpdate(context.Background(), version)

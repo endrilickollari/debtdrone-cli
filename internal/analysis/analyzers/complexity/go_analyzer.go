@@ -57,7 +57,6 @@ func (a *GoAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Comp
 	return metrics, nil
 }
 
-// analyzeFunction analyzes a single function and returns its complexity metrics
 func (a *GoAnalyzer) analyzeFunction(
 	fset *token.FileSet,
 	body *ast.BlockStmt,

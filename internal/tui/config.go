@@ -84,13 +84,13 @@ func defaultConfigItems() []configItem {
 
 // ConfigModel manages the settings screen.
 type ConfigModel struct {
-	items       []configItem
-	cursor      int
-	offset      int
-	mode        configMode
-	editBuffer  string
-	width       int
-	height      int
+	items      []configItem
+	cursor     int
+	offset     int
+	mode       configMode
+	editBuffer string
+	width      int
+	height     int
 }
 
 func newConfigModel() *ConfigModel {
@@ -137,7 +137,6 @@ func (m *ConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleNavKey processes keyboard input in navigation (non-editing) mode.
 func (m *ConfigModel) handleNavKey(str string) (tea.Model, tea.Cmd) {
 	visibleRows := max(m.height-10, 4)
 
@@ -194,8 +193,6 @@ func (m *ConfigModel) handleNavKey(str string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleEditKey processes keyboard input while the user is editing a
-// free-text config value.
 func (m *ConfigModel) handleEditKey(str string) (tea.Model, tea.Cmd) {
 	switch str {
 	case "esc":
@@ -233,14 +230,10 @@ func (m *ConfigModel) cycleOption(item *configItem, delta int) {
 	}
 }
 
-// View satisfies tea.Model. AppModel calls render() directly; this wrapper
-// exists only to fulfil the interface so ConfigModel can be used anywhere a
-// tea.Model is expected.
 func (m *ConfigModel) View() tea.View {
 	return tea.NewView(m.render())
 }
 
-// render produces the full config-screen string using cached dimensions.
 func (m *ConfigModel) render() string {
 	const boxWidth = 104
 	const innerWidth = boxWidth - 6

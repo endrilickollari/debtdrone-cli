@@ -11,9 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-
-
-
 type AnalysisRunStoreInterface interface {
 	Create(run *models.AnalysisRun) error
 	Get(id string) (*models.AnalysisRun, error)
@@ -77,7 +74,6 @@ func (s *DBAnalysisRunStore) Get(id string) (*models.AnalysisRun, error) {
 		return nil, err
 	}
 
-	// Calculate Delta
 	prevRun, err := s.getPreviousRun(run.RepositoryID.String(), run.ID.String(), run.StartedAt)
 	if err == nil && prevRun != nil {
 		run.Delta = map[string]interface{}{
@@ -164,7 +160,6 @@ func (s *DBAnalysisRunStore) List(userID string, status string, limit, offset in
 	return runs, nil
 }
 
-
 func (s *DBAnalysisRunStore) getPreviousRun(repoID, _ string, startedAt time.Time) (*models.AnalysisRun, error) {
 	query := `
 		SELECT total_technical_debt_hours, critical_issues_count
@@ -176,9 +171,7 @@ func (s *DBAnalysisRunStore) getPreviousRun(repoID, _ string, startedAt time.Tim
 		LIMIT 1
 	`
 	var run models.AnalysisRun
-	// We use startedAt of current run as the cutoff, assuming previous run completed before this one started.
-	// Or we can use the ID excluding itself if timestamps are close.
-	// Directive says "look up the previous scan".
+	// A run is previous only if it completed before the current run started.
 	err := s.db.QueryRow(query, repoID, startedAt).Scan(&run.TotalTechnicalDebtHours, &run.CriticalIssuesCount)
 	if err != nil {
 		return nil, err
@@ -212,7 +205,6 @@ func (s *DBAnalysisRunStore) Update(run *models.AnalysisRun) error {
 func (s *DBAnalysisRunStore) UpdateStatus(ctx context.Context, runID uuid.UUID, status string, results map[string]interface{}) error {
 	now := time.Now()
 
-	// Extract commit hash and branch if present in results
 	var commitHash *string
 	var branch *string
 
@@ -247,63 +239,54 @@ func (s *DBAnalysisRunStore) UpdateStatus(ctx context.Context, runID uuid.UUID, 
 		if results != nil {
 			log.Printf("📊 Analysis metrics: %+v", results)
 
-			// total_issues_found
 			if v, ok := results["total_issues_found"].(int); ok {
 				totalIssues = v
 			} else if v, ok := results["total_issues_found"].(float64); ok {
 				totalIssues = int(v)
 			}
 
-			// critical_count
 			if v, ok := results["critical_count"].(int); ok {
 				criticalCount = v
 			} else if v, ok := results["critical_count"].(float64); ok {
 				criticalCount = int(v)
 			}
 
-			// high_count
 			if v, ok := results["high_count"].(int); ok {
 				highCount = v
 			} else if v, ok := results["high_count"].(float64); ok {
 				highCount = int(v)
 			}
 
-			// medium_count
 			if v, ok := results["medium_count"].(int); ok {
 				mediumCount = v
 			} else if v, ok := results["medium_count"].(float64); ok {
 				mediumCount = int(v)
 			}
 
-			// low_count
 			if v, ok := results["low_count"].(int); ok {
 				lowCount = v
 			} else if v, ok := results["low_count"].(float64); ok {
 				lowCount = int(v)
 			}
 
-			// total_debt_hours
 			if v, ok := results["total_debt_hours"].(float64); ok {
 				totalDebtHours = v
 			} else if v, ok := results["total_debt_hours"].(int); ok {
 				totalDebtHours = float64(v)
 			}
 
-			// test_coverage_percentage
 			if v, ok := results["test_coverage_percentage"].(float64); ok {
 				coveragePercent = v
 			} else if v, ok := results["test_coverage_percentage"].(int); ok {
 				coveragePercent = float64(v)
 			}
 
-			// duplication_percentage
 			if v, ok := results["duplication_percentage"].(float64); ok {
 				duplicationPercent = v
 			} else if v, ok := results["duplication_percentage"].(int); ok {
 				duplicationPercent = float64(v)
 			}
 
-			// error message
 			if v, ok := results["error"].(string); ok {
 				errorMsg = &v
 			}

@@ -17,28 +17,23 @@ import (
 	"github.com/google/uuid"
 )
 
-// scanProgressMsg reports incremental progress.
 type scanProgressMsg struct {
 	Task     string
 	Progress float64
 }
 
-// scanCompleteMsg is sent when the scan finishes.
 type scanCompleteMsg struct {
 	path   string
 	issues []models.TechnicalDebtIssue
 	err    error
 }
 
-// spinnerChars is the animation used by ScanModel and UpdateModel.
 var spinnerChars = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// tickCmd fires every 100ms for spinner animations.
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second/10, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-// startScan runs the analysis in a goroutine.
 func startScan(path string, maxComplexity int, securityScan bool, progressChan chan tea.Msg) tea.Cmd {
 	log.SetOutput(io.Discard)
 	return func() tea.Msg {
@@ -233,7 +228,6 @@ func (m *ScanModel) handleKey(str string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// stateResults keys
 	isJSON := m.outputFormat == "json"
 
 	updateDetail := func() {
@@ -244,7 +238,6 @@ func (m *ScanModel) handleKey(str string) (tea.Model, tea.Cmd) {
 
 	switch str {
 	case "q", "esc", "r":
-		// Signal AppModel to navigate back to the menu.
 		return m, func() tea.Msg { return NavigateMsg{State: stateMenu} }
 	case "j", "down":
 		if isJSON {
@@ -280,13 +273,10 @@ func (m *ScanModel) handleKey(str string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View satisfies tea.Model (used when ScanModel is exercised standalone in
-// tests). AppModel calls render() directly.
 func (m *ScanModel) View() tea.View {
 	return tea.NewView(m.render())
 }
 
-// render produces the string for whichever sub-screen is active.
 func (m *ScanModel) render() string {
 	switch m.phase {
 	case scanRunning:
