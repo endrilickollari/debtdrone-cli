@@ -8,8 +8,9 @@ import (
 )
 
 type Result struct {
-	Issues  []models.TechnicalDebtIssue
-	Metrics map[string]interface{}
+	Issues   []models.TechnicalDebtIssue
+	Metrics  map[string]interface{}
+	Warnings []string
 }
 
 type Analyzer interface {

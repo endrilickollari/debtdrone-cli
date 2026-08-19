@@ -11,6 +11,7 @@ import (
 
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
 	gitservice "github.com/endrilickollari/debtdrone-cli/v2/internal/git"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/stretchr/testify/assert"
@@ -23,6 +24,13 @@ type testAnalyzer struct {
 	result  AnalyzerResult
 	err     error
 	panicOn bool
+}
+
+type warningCoreAnalyzer struct{}
+
+func (warningCoreAnalyzer) Name() string { return "Warning analyzer" }
+func (warningCoreAnalyzer) Analyze(context.Context, *gitservice.Repository) (*scancore.Result, error) {
+	return &scancore.Result{Warnings: []string{"structured warning"}}, nil
 }
 
 func (a testAnalyzer) ID() string   { return a.id }
@@ -50,6 +58,12 @@ func TestRunnerPreservesSuccessfulResultsAndReportsFailures(t *testing.T) {
 	require.Len(t, report.Failures, 2)
 	assert.Equal(t, "failed", report.Failures[0].AnalyzerID)
 	assert.Contains(t, report.Failures[1].Error, "panic: broken analyzer")
+}
+
+func TestLegacyAnalyzerConvertsStructuredWarnings(t *testing.T) {
+	result, err := (legacyAnalyzer{id: "security", analyzer: warningCoreAnalyzer{}}).Analyze(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []Warning{{AnalyzerID: "security", Message: "structured warning"}}, result.Warnings)
 }
 
 func TestRunnerReturnsCancellation(t *testing.T) {

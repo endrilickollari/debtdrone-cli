@@ -1,11 +1,11 @@
 package security
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -37,12 +37,30 @@ func (systemTrivyExecutor) Scan(ctx context.Context, root string) ([]byte, error
 		"--format", "json",
 		"--quiet",
 		root)
-	return cmd.CombinedOutput()
+	return executeTrivyCommand(cmd)
+}
+
+func executeTrivyCommand(cmd *exec.Cmd) ([]byte, error) {
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err == nil {
+		return output, nil
+	}
+	if diagnostic := strings.TrimSpace(stderr.String()); diagnostic != "" {
+		return output, fmt.Errorf("%w: %s", err, diagnostic)
+	}
+	return output, err
 }
 
 type TrivyAnalyzer struct {
 	executor trivyExecutor
 }
+
+const (
+	missingTrivyWarning  = "Security scanner (Trivy) not installed — security scan was skipped. Install Trivy to enable security scanning."
+	inMemoryTrivyWarning = "Security scan skipped — Trivy requires filesystem access but this is an in-memory repository."
+)
 
 func NewTrivyAnalyzer() *TrivyAnalyzer {
 	return &TrivyAnalyzer{executor: systemTrivyExecutor{}}
@@ -104,13 +122,11 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*sca
 		executor = systemTrivyExecutor{}
 	}
 	if err := executor.LookPath(); err != nil {
-		log.Println("⚠️  Trivy not installed - skipping security scan. Install with: brew install aquasec/trivy/trivy")
-		return emptySecurityResult(false, "trivy not installed"), nil
+		return emptySecurityResult(false, "trivy not installed", missingTrivyWarning), nil
 	}
 
 	if repo.Path == "" {
-		log.Println("⚠️  Trivy requires filesystem path - skipping in-memory repository")
-		return emptySecurityResult(true, "in-memory repository not supported"), nil
+		return emptySecurityResult(true, "in-memory repository not supported", inMemoryTrivyWarning), nil
 	}
 
 	scanRoot := repo.Path
@@ -132,10 +148,13 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*sca
 		defer cleanup()
 	}
 
-	output, err := executor.Scan(ctx, scanRoot)
-	if err != nil {
+	output, scanErr := executor.Scan(ctx, scanRoot)
+	if scanErr != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
 		if len(output) == 0 {
-			return nil, fmt.Errorf("trivy execution failed: %w, output: %s", err, string(output))
+			return nil, fmt.Errorf("trivy execution failed: %w", scanErr)
 		}
 	}
 
@@ -218,21 +237,30 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*sca
 		}
 	}
 
-	metrics := map[string]interface{}{
-		"security_issues_count": len(issues),
-		"vulnerabilities_count": countByCategory(issues, "vulnerability"),
-		"secrets_count":         countByCategory(issues, "secret"),
-		"critical_issues_count": countBySeverity(issues, "critical"),
-		"high_issues_count":     countBySeverity(issues, "high"),
-		"medium_issues_count":   countBySeverity(issues, "medium"),
-		"low_issues_count":      countBySeverity(issues, "low"),
-		"trivy_available":       true,
+	metrics := securityMetrics(issues, true)
+	warnings := []string(nil)
+	if scanErr != nil {
+		warnings = append(warnings, fmt.Sprintf("Trivy exited with an error; valid partial results were retained: %v", scanErr))
 	}
 
 	return &scancore.Result{
-		Issues:  issues,
-		Metrics: metrics,
+		Issues:   issues,
+		Metrics:  metrics,
+		Warnings: warnings,
 	}, nil
+}
+
+func securityMetrics(issues []models.TechnicalDebtIssue, available bool) map[string]interface{} {
+	return map[string]interface{}{
+		"security_issues_count":   len(issues),
+		"vulnerabilities_count":   countByCategory(issues, "vulnerability"),
+		"secrets_count":           countByCategory(issues, "secret"),
+		"security_critical_count": countBySeverity(issues, "critical"),
+		"security_high_count":     countBySeverity(issues, "high"),
+		"security_medium_count":   countBySeverity(issues, "medium"),
+		"security_low_count":      countBySeverity(issues, "low"),
+		"trivy_available":         available,
+	}
 }
 
 func canonicalTrivyTarget(scanRoot, target string) string {
@@ -252,15 +280,10 @@ func canonicalTrivyTarget(scanRoot, target string) string {
 	return "/" + strings.TrimPrefix(cleaned, "/")
 }
 
-func emptySecurityResult(available bool, reason string) *scancore.Result {
-	return &scancore.Result{
-		Issues: []models.TechnicalDebtIssue{},
-		Metrics: map[string]interface{}{
-			"security_issues_count": 0,
-			"trivy_available":       available,
-			"skip_reason":           reason,
-		},
-	}
+func emptySecurityResult(available bool, reason string, warnings ...string) *scancore.Result {
+	metrics := securityMetrics(nil, available)
+	metrics["skip_reason"] = reason
+	return &scancore.Result{Issues: []models.TechnicalDebtIssue{}, Metrics: metrics, Warnings: warnings}
 }
 
 func stageTargetFiles(ctx context.Context, repo *git.Repository, targetFiles []string) (string, func(), error) {
