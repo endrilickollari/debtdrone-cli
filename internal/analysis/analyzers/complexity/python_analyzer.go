@@ -47,7 +47,7 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
 
 		cognitivePtr := cognitive
-		// Use full function code for AI fixes - extract up to 10000 chars
+		// AI fixes need more context than issue previews.
 		snippetStr := truncateSnippet(fn.body, 10000)
 
 		metric := models.ComplexityMetric{
@@ -168,7 +168,7 @@ func mapPythonNodes(node *sitter.Node) []Node {
 			nodes = append(nodes, Node{Type: Loop, Depth: depth})
 			newDepth++
 		case "try_statement":
-			// try block adds nesting but not a branch by itself usually, but we can treat as nesting.
+			// A try block adds nesting without adding a branch.
 			nodes = append(nodes, Node{Type: Nesting, Depth: depth})
 			newDepth++
 		case "boolean_operator":

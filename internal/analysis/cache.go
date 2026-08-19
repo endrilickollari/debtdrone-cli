@@ -14,7 +14,7 @@ import (
 
 const (
 	CacheVersion   = "v1"
-	CacheTTL       = 7 * 24 * time.Hour // 7 days
+	CacheTTL       = 7 * 24 * time.Hour
 	CacheKeyPrefix = "debtdrone:analysis"
 )
 
@@ -94,7 +94,6 @@ func (c *AnalysisCache) Set(ctx context.Context, analyzerName, fileHash string, 
 	}
 
 	if !set {
-		// Key already exists, update with SET instead
 		if err := c.redis.Set(ctx, key, data, CacheTTL).Err(); err != nil {
 			return fmt.Errorf("redis set: %w", err)
 		}
@@ -108,13 +107,11 @@ func (c *AnalysisCache) GetStats(ctx context.Context) (hits, misses int64, err e
 		return 0, 0, nil
 	}
 
-	// Get cache stats from Redis INFO command
 	info, err := c.redis.Info(ctx, "stats").Result()
 	if err != nil {
 		return 0, 0, err
 	}
 
-	// Parse keyspace_hits and keyspace_misses from info string
 	_ = info // Stats parsing could be added here if needed
 	return 0, 0, nil
 }

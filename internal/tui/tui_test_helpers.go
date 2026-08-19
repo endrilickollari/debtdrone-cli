@@ -11,7 +11,6 @@ func init() {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 }
 
-// keyMsg generates a tea.KeyPressMsg for a printable character.
 func keyMsg(r rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{
 		Code: r,
@@ -19,7 +18,6 @@ func keyMsg(r rune) tea.KeyPressMsg {
 	}
 }
 
-// specialKeyMsg generates a tea.KeyPressMsg for a special key.
 func specialKeyMsg(k rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{
 		Code: k,

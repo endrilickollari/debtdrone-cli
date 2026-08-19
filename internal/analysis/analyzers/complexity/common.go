@@ -72,7 +72,6 @@ func truncateSnippet(code string, maxLen int) string {
 	return code[:maxLen] + "..."
 }
 
-// fullFunctionCode returns the complete function without truncation
 func fullFunctionCode(code string) string {
 	return code
 }

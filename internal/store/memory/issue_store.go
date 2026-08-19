@@ -76,7 +76,6 @@ func (s *InMemoryIssueStore) GetOpenIssueSummary(repositoryID uuid.UUID) (*store
 }
 
 func (s *InMemoryIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid.UUID, analyzerName string, newIssues []models.TechnicalDebtIssue) (int, int, error) {
-	// In-memory implementation: simple clear and replace
 	deleted := 0
 	remaining := []models.TechnicalDebtIssue{}
 	for _, issue := range s.Issues {

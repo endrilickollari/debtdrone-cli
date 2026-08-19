@@ -14,7 +14,6 @@ type configItem struct {
 	Description string
 }
 
-// mockConfigItems replicates the in-memory settings used in the TUI
 func mockConfigItems() []configItem {
 	return []configItem{
 		{"Output Format", "text", "string", "Render mode for scan results (text/json)"},
@@ -66,9 +65,8 @@ func newConfigSetCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key, value := args[0], args[1]
-			
-			// Mock the update logic — in a real implementation this would write to 
-			// a global ~/.debtdrone/config.json file.
+
+			// TODO: persist the value to the DebtDrone configuration file.
 			fmt.Fprintf(cmd.OutOrStdout(), "✅ Successfully set %q to %q\n", key, value)
 			return nil
 		},

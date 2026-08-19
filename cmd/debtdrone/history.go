@@ -11,11 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mockAnalysisRuns provides sample data for the history command
 func mockAnalysisRuns(limit int) []models.AnalysisRun {
 	repoPath1 := "./debtdrone-cli"
 	repoPath2 := "./webapp"
-	
+
 	runs := []models.AnalysisRun{
 		{
 			ID:                      uuid.New(),
@@ -82,8 +81,7 @@ func printHistoryJSON(cmd *cobra.Command, runs []models.AnalysisRun) error {
 
 func printHistoryTable(cmd *cobra.Command, runs []models.AnalysisRun) error {
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
-	
-	// Print Header
+
 	fmt.Fprintln(w, "DATE\tREPOSITORY\tISSUES\tCRITICAL\tHIGH")
 	fmt.Fprintln(w, "----\t----------\t------\t--------\t----")
 

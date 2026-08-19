@@ -5,32 +5,36 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis/analyzers"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis/analyzers/security"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
+	"github.com/go-git/go-billy/v5/util"
 	"github.com/google/uuid"
 )
 
 // Scan opens path once, constructs the enabled core analyzers, and returns a
 // neutral report suitable for CLI, SaaS, or other Go consumers.
 func Scan(ctx context.Context, path string, options Options) (Report, error) {
-	if options.Coverage.Enabled {
-		return Report{}, fmt.Errorf("coverage scanning is not available until Phase 2")
-	}
 	if options.Scope.Mode == "" {
 		options.Scope = FullScan()
+	}
+	if err := validateScope(options.Scope); err != nil {
+		return Report{}, err
 	}
 	if options.Scope.Mode == ScopeNoChanges {
 		return Report{Metrics: make(map[string][]Metric)}, nil
 	}
-	if err := validateScope(options.Scope); err != nil {
-		return Report{}, err
+	if options.Coverage.Enabled {
+		return Report{}, fmt.Errorf("coverage scanning is not available until Phase 2")
 	}
 
 	repo, err := git.NewService().OpenLocal(path)
@@ -42,13 +46,13 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
 	ctx = context.WithValue(ctx, "userID", uuid.New())
 	ctx = context.WithValue(ctx, "isCLI", true)
-	if options.Scope.Mode == ScopeIncremental {
-		targetFiles, err := normalizeTargetFiles(repo.Path, options.Scope.Files)
-		if err != nil {
-			return Report{}, err
-		}
-		ctx = context.WithValue(ctx, "targetFiles", targetFiles)
+	targetFiles, filterWarnings, err := prepareTargetFiles(ctx, repo, options.Scope)
+	if err != nil {
+		return Report{}, err
 	}
+	// Presence of targetFiles is intentional even when the slice is empty: an
+	// empty incremental scan after filtering must never become a full scan.
+	ctx = scancore.WithTargetFiles(ctx, targetFiles, options.Scope.Mode == ScopeIncremental)
 
 	config := models.DefaultComplexityConfig()
 	if options.Complexity.MaxCyclomatic > 0 {
@@ -66,7 +70,9 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 		coreAnalyzers = append(coreAnalyzers, legacyAnalyzer{id: "trivy", analyzer: security.NewTrivyAnalyzer(), repo: repo})
 	}
 
-	return (Runner{MaxParallel: options.MaxParallel, OnProgress: options.OnProgress}).Run(ctx, coreAnalyzers)
+	report, err := (Runner{MaxParallel: options.MaxParallel, OnProgress: options.OnProgress}).Run(ctx, coreAnalyzers)
+	report.Warnings = append(filterWarnings, report.Warnings...)
+	return report, err
 }
 
 func validateScope(scope Scope) error {
@@ -91,21 +97,28 @@ func normalizeTargetFiles(root string, files []string) ([]string, error) {
 	result := make([]string, 0, len(files))
 	seen := make(map[string]struct{}, len(files))
 	for _, file := range files {
-		file = filepath.Clean(file)
+		original := file
+		file = strings.TrimSpace(file)
+		if file == "" {
+			return nil, fmt.Errorf("incremental file path is empty")
+		}
 		if filepath.IsAbs(file) {
-			relative, err := filepath.Rel(absoluteRoot, file)
+			relative, err := filepath.Rel(absoluteRoot, filepath.Clean(file))
 			if err != nil {
-				return nil, fmt.Errorf("resolve incremental file %q: %w", file, err)
+				return nil, fmt.Errorf("incremental file %q is outside repository root: %w", original, err)
 			}
 			file = relative
+		} else if isWindowsAbsolutePath(file) {
+			return nil, fmt.Errorf("incremental file %q uses an absolute path for a different platform", original)
 		}
-		if file == ".." || strings.HasPrefix(file, ".."+string(filepath.Separator)) {
-			return nil, fmt.Errorf("incremental file %q is outside repository root", file)
+		file = strings.ReplaceAll(file, "\\", "/")
+		file = path.Clean(file)
+		if file == "." || file == ".." || strings.HasPrefix(file, "../") {
+			return nil, fmt.Errorf("incremental file %q is outside repository root", original)
 		}
-		file = filepath.ToSlash(file)
-		file = strings.TrimPrefix(file, "./")
-		if !strings.HasPrefix(file, "/") {
-			file = "/" + file
+		file = "/" + strings.TrimPrefix(file, "/")
+		if err := ensurePathWithinRoot(absoluteRoot, file); err != nil {
+			return nil, err
 		}
 		if _, exists := seen[file]; exists {
 			continue
@@ -115,6 +128,101 @@ func normalizeTargetFiles(root string, files []string) ([]string, error) {
 	}
 	sort.Strings(result)
 	return result, nil
+}
+
+func prepareTargetFiles(ctx context.Context, repo *git.Repository, scope Scope) ([]string, []Warning, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	var candidates []string
+	if scope.Mode == ScopeIncremental {
+		var err error
+		candidates, err = normalizeTargetFiles(repo.Path, scope.Files)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		err := util.Walk(repo.FS, "/", func(filePath string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return fmt.Errorf("visit %s: %w", filePath, walkErr)
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if info.IsDir() {
+				if filePath != "/" && filepolicy.IsGeneratedDirectory(info.Name()) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			candidates = append(candidates, canonicalRepositoryPath(filePath))
+			return nil
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("discover repository files: %w", err)
+		}
+	}
+
+	targets := make([]string, 0, len(candidates))
+	warnings := make([]Warning, 0)
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		if filepolicy.IsGeneratedPath(candidate) {
+			continue
+		}
+		ok, reason := filepolicy.CheckAnalyzableContext(ctx, repo.FS, candidate)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		if ok {
+			targets = append(targets, candidate)
+			continue
+		}
+		if !filepolicy.IsSilentSkipReason(reason) {
+			warnings = append(warnings, Warning{AnalyzerID: "scanner", Message: fmt.Sprintf("%s skipped: %s", candidate, reason)})
+		}
+	}
+	sort.Strings(targets)
+	sort.Slice(warnings, func(i, j int) bool { return warnings[i].Message < warnings[j].Message })
+	return targets, warnings, nil
+}
+
+func canonicalRepositoryPath(file string) string {
+	file = strings.ReplaceAll(file, "\\", "/")
+	file = path.Clean("/" + strings.TrimPrefix(file, "/"))
+	return file
+}
+
+func isWindowsAbsolutePath(file string) bool {
+	normalized := strings.ReplaceAll(file, "\\", "/")
+	if strings.HasPrefix(normalized, "//") {
+		return true
+	}
+	return len(normalized) >= 3 && ((normalized[0] >= 'A' && normalized[0] <= 'Z') || (normalized[0] >= 'a' && normalized[0] <= 'z')) && normalized[1] == ':' && normalized[2] == '/'
+}
+
+func ensurePathWithinRoot(absoluteRoot, repositoryPath string) error {
+	resolvedRoot, err := filepath.EvalSymlinks(absoluteRoot)
+	if err != nil {
+		resolvedRoot = absoluteRoot
+	}
+	candidate := filepath.Join(absoluteRoot, filepath.FromSlash(strings.TrimPrefix(repositoryPath, "/")))
+	resolvedCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		// Missing or inaccessible paths are handled by the analyzability policy
+		// and surfaced as scanner warnings.
+		return nil
+	}
+	relative, err := filepath.Rel(resolvedRoot, resolvedCandidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("incremental file %q resolves outside repository root", repositoryPath)
+	}
+	return nil
 }
 
 type legacyAnalyzer struct {

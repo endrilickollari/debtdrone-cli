@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
 )
@@ -24,7 +25,7 @@ func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*scanc
 	var totalLines int64
 	var fileCount int64
 	var targetFiles map[string]struct{}
-	if files, ok := ctx.Value("targetFiles").([]string); ok {
+	if files, _, ok := scancore.TargetFiles(ctx); ok {
 		targetFiles = make(map[string]struct{}, len(files))
 		for _, file := range files {
 			targetFiles[file] = struct{}{}
@@ -36,7 +37,7 @@ func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*scanc
 			return err
 		}
 		if info.IsDir() {
-			if info.Name() == ".git" {
+			if filepolicy.IsGeneratedDirectory(info.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -46,7 +47,7 @@ func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*scanc
 			if relErr != nil {
 				return relErr
 			}
-			relative = "/" + filepath.ToSlash(relative)
+			relative = "/" + strings.TrimPrefix(filepath.ToSlash(relative), "/")
 			if _, included := targetFiles[relative]; !included {
 				return nil
 			}

@@ -172,8 +172,6 @@ func (s *DBTechnicalDebtIssueStore) BatchCreate(issues []models.TechnicalDebtIss
 			return fmt.Errorf("failed to check for duplicate issue %d: %w", i, err)
 		}
 		if exists {
-			// Touch the existing issue to update its analysis_run_id
-			// This prevents it from being marked as 'resolved' by ResolveMissingIssues
 			if err := s.TouchExistingIssue(issue.RepositoryID, issue.AnalysisRunID, issue.FilePath, issue.LineNumber, issue.IssueType, issue.ToolRuleID); err != nil {
 				return fmt.Errorf("failed to touch existing issue %d: %w", i, err)
 			}
@@ -555,8 +553,6 @@ func (s *DBTechnicalDebtIssueStore) GetTopNewIssuesForRun(runID uuid.UUID, limit
 
 // ResolveMissingIssues marks all open issues that were not detected in the latest scan as 'resolved'.
 // This implements the "Sync-to-Truth" pattern for issue reconciliation.
-// ResolveMissingIssues marks all open issues that were not detected in the latest scan as 'resolved'.
-// This implements the "Sync-to-Truth" pattern for issue reconciliation.
 func (s *DBTechnicalDebtIssueStore) ResolveMissingIssues(repositoryID uuid.UUID, currentAnalysisRunID uuid.UUID, resolutionReason string) ([]uuid.UUID, error) {
 	query := `
 		UPDATE technical_debt_issues
@@ -602,9 +598,6 @@ func (s *DBTechnicalDebtIssueStore) ResolveStaleIssuesInFiles(ctx context.Contex
 		AND file_path = ANY($2::text[])
 		AND NOT (id = ANY($3::uuid[]));
 	`
-
-	// Convert filePaths to pq.StringArray for Postgres array compatibility
-	// Convert foundIssueIDs to pq.Array (or manual string array if needed, but uuid array should work with lib/pq)
 
 	_, err := s.db.ExecContext(ctx, query, repoID, pq.Array(filePaths), pq.Array(foundIssueIDs))
 	if err != nil {
@@ -653,10 +646,7 @@ func (s *DBTechnicalDebtIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid
 	}
 	defer tx.Rollback()
 
-	// Step 1: Upsert new issues
-	// We use the fingerprint_hash to match existing open issues.
-	// If a match is found, we update the analysis_run_id and timestamp, effectively "touching" it.
-	// If no match, we insert as new.
+	// Refreshing analysis_run_id lets the sweep distinguish current issues.
 	query := `
 		INSERT INTO technical_debt_issues (
 			id, user_id, repository_id, analysis_run_id, file_path, line_number, column_number,
@@ -697,7 +687,6 @@ func (s *DBTechnicalDebtIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid
 			issue.ID = uuid.New()
 		}
 
-		// Ensure sync status defaults are set if empty (though model/DB should handle this)
 		if issue.JiraSyncStatus == "" {
 			issue.JiraSyncStatus = "pending"
 		}
@@ -718,22 +707,9 @@ func (s *DBTechnicalDebtIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid
 		insertedCount++
 	}
 
-	// Step 2: "Sweep" - Resolve missing issues
-	// Any open issue for this analyzer & repo that wasn't updated in this run (analysis_run_id != current) is now resolved.
-	// NOTE: We assume all issues for this analyzer were processed in the batch above.
-	// If newIssues is empty, ALL open issues for this analyzer are resolved.
-
-	// Get the Current Analysis Run ID from the first issue, or fail if empty?
-	// If newIssues is empty, we need the runID passed separately or derived.
-	// But wait, if newIssues is empty, we just mark all open issues for this analyzer as resolved.
-	// We need the AnalysisRunID to log properly, but technically any issue NOT touched is resolved.
-
 	var currentRunID uuid.UUID
 	if len(newIssues) > 0 {
 		currentRunID = newIssues[0].AnalysisRunID
-	} else if len(newIssues) == 0 {
-		// Edge case: Analyzer found 0 issues. Everything currently open for this analyzer should be resolved.
-		// logic below handles it because NO issues have the new runID.
 	}
 
 	resolveQuery := `
@@ -747,9 +723,6 @@ func (s *DBTechnicalDebtIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid
 		  AND status = 'open'
 		  AND (analysis_run_id != $4 OR analysis_run_id IS NULL)
 	`
-	// If currentRunID is nil (empty batch), the Condition `analysis_run_id != $4` will be true for any existing ID?
-	// Make sure uuid.Nil works in postgres comparison. UUID(00..) != existing-uuid is True.
-
 	res, err := tx.Exec(resolveQuery, now, repositoryID, analyzerName, currentRunID)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to mark old issues as resolved: %w", err)
@@ -761,8 +734,7 @@ func (s *DBTechnicalDebtIssueStore) ReconcileIssuesForAnalyzer(repositoryID uuid
 		return 0, 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	// We return resolvedCount as "deducted" (conceptually) or separately?
-	// The signature is (deleted, inserted, error). We'll map resolved->deleted for backward compat in logging.
+	// The legacy return contract reports resolved issues as deleted.
 	return int(resolvedCount), insertedCount, nil
 }
 
@@ -831,7 +803,6 @@ func (s *DBTechnicalDebtIssueStore) GetByExternalLink(platform, externalID strin
 		return nil, fmt.Errorf("failed to get issue by external link: %w", err)
 	}
 
-	// Handle nullable fields
 	if lineNumber.Valid {
 		ln := int(lineNumber.Int64)
 		issue.LineNumber = &ln

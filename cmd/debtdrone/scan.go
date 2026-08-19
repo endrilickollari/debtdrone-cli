@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newScanCmd constructs the 'debtdrone scan' subcommand for headless execution.
 func newScanCmd() *cobra.Command {
 	var (
 		format        string
@@ -30,7 +29,6 @@ func newScanCmd() *cobra.Command {
 This command is optimized for CI/CD pipelines and automated workflows.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// 1. Resolve Target Path
 			targetPath := "."
 			if len(args) > 0 {
 				targetPath = args[0]
@@ -40,7 +38,6 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				return fmt.Errorf("failed to resolve path %q: %w", targetPath, err)
 			}
 
-			// 2. Engine Initialization & Execution
 			svc := service.NewScanService()
 			ctx := context.WithValue(context.Background(), "isCLI", true)
 			opts := service.ScanOptions{
@@ -48,13 +45,11 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				SecurityScan:  securityScan,
 			}
 
-			// Execute the scan synchronously (no progress bars in headless mode)
 			issues, scanErr := svc.Run(ctx, absPath, opts, nil)
 			if scanErr != nil && !service.IsPartialFailure(scanErr) {
 				return fmt.Errorf("scan failed: %w", scanErr)
 			}
 
-			// 3. Output Formatting
 			switch strings.ToLower(format) {
 			case "json":
 				if err := printJSON(cmd, issues); err != nil {
@@ -66,7 +61,6 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				}
 			}
 
-			// 4. CI/CD Quality Gate Logic
 			if failOn != "" {
 				severityMap := map[string]int{
 					"critical": 4,
@@ -83,7 +77,6 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				for _, issue := range issues {
 					if issueSeverity, exists := severityMap[strings.ToLower(issue.Severity)]; exists {
 						if issueSeverity >= requestedThreshold {
-							// Return a custom error that Cobra will handle
 							gateErr := fmt.Errorf("quality gate failed: found issues matching or exceeding severity '%s'", failOn)
 							if scanErr != nil {
 								return errors.Join(fmt.Errorf("scan completed with partial results: %w", scanErr), gateErr)
@@ -101,7 +94,6 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 		},
 	}
 
-	// Flags
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format: text or json")
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "Fail the build if issues with this severity or higher are found (critical, high, medium, low)")
 	cmd.Flags().IntVar(&maxComplexity, "max-complexity", 15, "Cyclomatic complexity threshold per function")
@@ -110,7 +102,6 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 	return cmd
 }
 
-// printJSON outputs the scan results as a pretty-printed JSON array.
 func printJSON(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 	if issues == nil {
 		issues = []models.TechnicalDebtIssue{}
@@ -120,34 +111,28 @@ func printJSON(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 	return encoder.Encode(issues)
 }
 
-// printText outputs the scan results in a clean table using text/tabwriter.
 func printText(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {
 	if len(issues) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), "No technical debt issues found.")
 		return nil
 	}
 
-	// Initialize tabwriter for a clean columnar layout
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
 
-	// Print Header
 	fmt.Fprintln(w, "SEVERITY\tFILE:LINE\tRULE\tMESSAGE")
 	fmt.Fprintln(w, "--------\t---------\t----\t-------")
 
 	for _, issue := range issues {
-		// Format File:Line
 		location := issue.FilePath
 		if issue.LineNumber != nil {
 			location = fmt.Sprintf("%s:%d", issue.FilePath, *issue.LineNumber)
 		}
 
-		// Format Rule
 		rule := "N/A"
 		if issue.ToolRuleID != nil && *issue.ToolRuleID != "" {
 			rule = *issue.ToolRuleID
 		}
 
-		// Print Row
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 			strings.ToUpper(issue.Severity),
 			location,

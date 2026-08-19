@@ -14,11 +14,10 @@ var (
 	date    = "unknown"
 )
 
-// state enumerates the top-level screens.
 type state int
 
 const (
-	stateMenu     state = iota
+	stateMenu state = iota
 	stateScanning
 	stateResults
 	stateHistory
@@ -27,7 +26,6 @@ const (
 	stateHelp
 )
 
-// allCommands is the command registry.
 var allCommands = []struct {
 	cmd  string
 	desc string

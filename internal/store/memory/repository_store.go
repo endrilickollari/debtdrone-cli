@@ -61,7 +61,7 @@ func (s *InMemoryRepositoryStore) MarkAsInaccessible(id string) error {
 }
 
 func (s *InMemoryRepositoryStore) GetUserRepositoriesPaginated(ctx interface{}, userID string, page, pageSize int, sortBy, sortOrder string, filters interface{}) ([]*models.UserRepository, int64, error) {
-	// Simple implementation for memory store, ignoring sort for now
+	// TODO: honor sortBy and sortOrder in the in-memory implementation.
 	repos, err := s.ListByUserID(userID)
 	if err != nil {
 		return nil, 0, err

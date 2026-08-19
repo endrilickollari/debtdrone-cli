@@ -114,7 +114,6 @@ func findCSharpFunctions(root *sitter.Node, content []byte) []cSharpFunctionInfo
 			} else if name == "body" {
 				bodyNode = c.Node
 			} else if name == "lambda" {
-				// lambda node itself
 				parent = c.Node
 			}
 		}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/analysis/analyzers/complexity"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
@@ -31,12 +32,10 @@ func NewComplexityAnalyzer() *ComplexityAnalyzer {
 	}
 }
 
-// Name returns the analyzer name
 func (a *ComplexityAnalyzer) Name() string {
 	return "ComplexityAnalyzer"
 }
 
-// Analyze performs complexity analysis on the repository
 func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*scancore.Result, error) {
 	analysisRunID, ok := ctx.Value("analysisRunID").(uuid.UUID)
 	if !ok {
@@ -54,12 +53,14 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 	}
 
 	var targetFilesMap map[string]bool
-	if targetFiles, ok := ctx.Value("targetFiles").([]string); ok && len(targetFiles) > 0 {
+	if targetFiles, incremental, ok := scancore.TargetFiles(ctx); ok {
 		targetFilesMap = make(map[string]bool)
 		for _, f := range targetFiles {
 			targetFilesMap[f] = true
 		}
-		log.Printf("🔬 Incremental analysis: targeting %d changed files", len(targetFiles))
+		if incremental {
+			log.Printf("🔬 Incremental analysis: targeting %d changed files", len(targetFiles))
+		}
 	}
 
 	config, ok := ctx.Value("complexityConfig").(models.ComplexityConfig)
@@ -78,8 +79,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		}
 		if info.IsDir() {
 			dirName := filepath.Base(path)
-			if dirName == ".git" || dirName == "node_modules" || dirName == "vendor" ||
-				dirName == ".venv" || dirName == "venv" || dirName == "__pycache__" {
+			if filepolicy.IsGeneratedDirectory(dirName) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -89,10 +89,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		if err != nil {
 			relPath = path
 		}
-		// Ensure relPath has leading slash to match format from repo.FS
-		if !strings.HasPrefix(relPath, "/") {
-			relPath = "/" + relPath
-		}
+		relPath = "/" + strings.TrimPrefix(filepath.ToSlash(relPath), "/")
 
 		if targetFilesMap != nil && !targetFilesMap[relPath] {
 			if ctx.Value("isCLI") != true {
@@ -134,7 +131,6 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		}
 
 		if len(metrics) > 0 {
-			// Only log in non-CLI mode to avoid polluting TUI output
 			if ctx.Value("isCLI") != true {
 				log.Printf("🔍 Analyzed %s - found %d functions", relPath, len(metrics))
 			}
@@ -146,7 +142,6 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 			metrics[i].RepositoryID = repositoryID
 			metrics[i].AnalysisRunID = analysisRunID
 
-			// Recalculate debt based on dynamic configuration
 			debtHours := a.CalculateDebt(metrics[i].CyclomaticComplexity, config)
 			metrics[i].TechnicalDebtMinutes = int(debtHours * 60)
 		}

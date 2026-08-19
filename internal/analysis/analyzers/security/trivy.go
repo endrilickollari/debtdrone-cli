@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,17 +19,39 @@ import (
 	"github.com/google/uuid"
 )
 
-type TrivyAnalyzer struct{}
+type trivyExecutor interface {
+	LookPath() error
+	Scan(context.Context, string) ([]byte, error)
+}
+
+type systemTrivyExecutor struct{}
+
+func (systemTrivyExecutor) LookPath() error {
+	_, err := exec.LookPath("trivy")
+	return err
+}
+
+func (systemTrivyExecutor) Scan(ctx context.Context, root string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "trivy", "fs",
+		"--scanners", "vuln,secret",
+		"--format", "json",
+		"--quiet",
+		root)
+	return cmd.CombinedOutput()
+}
+
+type TrivyAnalyzer struct {
+	executor trivyExecutor
+}
 
 func NewTrivyAnalyzer() *TrivyAnalyzer {
-	return &TrivyAnalyzer{}
+	return &TrivyAnalyzer{executor: systemTrivyExecutor{}}
 }
 
 func (a *TrivyAnalyzer) Name() string {
 	return "Trivy Security Scanner"
 }
 
-// Trivy JSON Output Structures
 type TrivyOutput struct {
 	Results []TrivyResult `json:"Results"`
 }
@@ -73,37 +99,40 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*sca
 		return nil, fmt.Errorf("userID not found in context")
 	}
 
-	if _, err := exec.LookPath("trivy"); err != nil {
+	executor := a.executor
+	if executor == nil {
+		executor = systemTrivyExecutor{}
+	}
+	if err := executor.LookPath(); err != nil {
 		log.Println("⚠️  Trivy not installed - skipping security scan. Install with: brew install aquasec/trivy/trivy")
-		return &scancore.Result{
-			Issues: []models.TechnicalDebtIssue{},
-			Metrics: map[string]interface{}{
-				"security_issues_count": 0,
-				"trivy_available":       false,
-				"skip_reason":           "trivy not installed",
-			},
-		}, nil
+		return emptySecurityResult(false, "trivy not installed"), nil
 	}
 
 	if repo.Path == "" {
 		log.Println("⚠️  Trivy requires filesystem path - skipping in-memory repository")
-		return &scancore.Result{
-			Issues: []models.TechnicalDebtIssue{},
-			Metrics: map[string]interface{}{
-				"security_issues_count": 0,
-				"trivy_available":       true,
-				"skip_reason":           "in-memory repository not supported",
-			},
-		}, nil
+		return emptySecurityResult(true, "in-memory repository not supported"), nil
 	}
 
-	cmd := exec.CommandContext(ctx, "trivy", "fs",
-		"--scanners", "vuln,secret",
-		"--format", "json",
-		"--quiet",
-		repo.Path)
+	scanRoot := repo.Path
+	cleanup := func() {}
+	var selectedTargets map[string]struct{}
+	if targetFiles, _, selectionBound := scancore.TargetFiles(ctx); selectionBound {
+		if len(targetFiles) == 0 {
+			return emptySecurityResult(true, "no analyzable target files"), nil
+		}
+		selectedTargets = make(map[string]struct{}, len(targetFiles))
+		for _, target := range targetFiles {
+			selectedTargets[canonicalTrivyTarget("", target)] = struct{}{}
+		}
+		var err error
+		scanRoot, cleanup, err = stageTargetFiles(ctx, repo, targetFiles)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+	}
 
-	output, err := cmd.CombinedOutput()
+	output, err := executor.Scan(ctx, scanRoot)
 	if err != nil {
 		if len(output) == 0 {
 			return nil, fmt.Errorf("trivy execution failed: %w, output: %s", err, string(output))
@@ -119,6 +148,13 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*sca
 	now := time.Now()
 
 	for _, result := range trivyResult.Results {
+		if selectedTargets != nil {
+			canonicalTarget := canonicalTrivyTarget(scanRoot, result.Target)
+			if _, selected := selectedTargets[canonicalTarget]; !selected {
+				continue
+			}
+			result.Target = strings.TrimPrefix(canonicalTarget, "/")
+		}
 		for _, vuln := range result.Vulnerabilities {
 			message := fmt.Sprintf("%s: %s (%s)", vuln.VulnerabilityID, vuln.Title, vuln.PkgName)
 
@@ -197,6 +233,97 @@ func (a *TrivyAnalyzer) Analyze(ctx context.Context, repo *git.Repository) (*sca
 		Issues:  issues,
 		Metrics: metrics,
 	}, nil
+}
+
+func canonicalTrivyTarget(scanRoot, target string) string {
+	target = strings.TrimSpace(target)
+	if scanRoot != "" && filepath.IsAbs(target) {
+		relative, err := filepath.Rel(scanRoot, target)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return ""
+		}
+		target = relative
+	}
+	target = strings.ReplaceAll(target, "\\", "/")
+	cleaned := path.Clean(target)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return ""
+	}
+	return "/" + strings.TrimPrefix(cleaned, "/")
+}
+
+func emptySecurityResult(available bool, reason string) *scancore.Result {
+	return &scancore.Result{
+		Issues: []models.TechnicalDebtIssue{},
+		Metrics: map[string]interface{}{
+			"security_issues_count": 0,
+			"trivy_available":       available,
+			"skip_reason":           reason,
+		},
+	}
+}
+
+func stageTargetFiles(ctx context.Context, repo *git.Repository, targetFiles []string) (string, func(), error) {
+	root, err := os.MkdirTemp("", "debtdrone-trivy-*")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create Trivy target directory: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(root) }
+	fail := func(err error) (string, func(), error) {
+		cleanup()
+		return "", func() {}, err
+	}
+
+	for _, target := range targetFiles {
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
+		relative := filepath.Clean(filepath.FromSlash(strings.TrimPrefix(target, "/")))
+		if relative == "." || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return fail(fmt.Errorf("invalid Trivy target path %q", target))
+		}
+		destination := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			return fail(fmt.Errorf("create Trivy target directory for %q: %w", target, err))
+		}
+		if err := copyTargetFile(ctx, repo, target, destination); err != nil {
+			return fail(err)
+		}
+	}
+	return root, cleanup, nil
+}
+
+func copyTargetFile(ctx context.Context, repo *git.Repository, sourcePath, destination string) error {
+	source, err := repo.FS.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open Trivy target %q: %w", sourcePath, err)
+	}
+	defer source.Close()
+
+	target, err := os.OpenFile(destination, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create staged Trivy target %q: %w", sourcePath, err)
+	}
+	defer target.Close()
+
+	buffer := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		read, readErr := source.Read(buffer)
+		if read > 0 {
+			if _, err := target.Write(buffer[:read]); err != nil {
+				return fmt.Errorf("stage Trivy target %q: %w", sourcePath, err)
+			}
+		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			return fmt.Errorf("read Trivy target %q: %w", sourcePath, readErr)
+		}
+	}
 }
 
 func mapSeverity(trivySeverity string) string {

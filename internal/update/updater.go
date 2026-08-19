@@ -15,10 +15,10 @@ var (
 )
 
 type UpdateInfo struct {
-	Available    bool
-	Version      string
-	AssetURL     string
-	AssetName    string
+	Available bool
+	Version   string
+	AssetURL  string
+	AssetName string
 	// ReleaseNotes contains the markdown body from the GitHub release page.
 	// It is populated by CheckForUpdate and displayed in the update prompt
 	// modal. May be empty for releases that have no description.
@@ -26,7 +26,6 @@ type UpdateInfo struct {
 }
 
 func CheckForUpdate(ctx context.Context, currentVersion string) (*UpdateInfo, error) {
-	// Skip update check for development versions
 	if currentVersion == "" || currentVersion == "dev" || currentVersion == "latest" {
 		return &UpdateInfo{Available: false}, nil
 	}

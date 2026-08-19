@@ -14,12 +14,10 @@ func newInitCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const configFilename = ".debtdrone.yaml"
 
-			// 1. Check if config file already exists
 			if _, err := os.Stat(configFilename); err == nil {
 				return fmt.Errorf(".debtdrone.yaml already exists in this directory")
 			}
 
-			// 2. Create default configuration content
 			defaultConfig := `quality_gate:
   fail_on: high
 
@@ -34,7 +32,6 @@ ignore_paths:
   - ".git"
 `
 
-			// 3. Write to file
 			if err := os.WriteFile(configFilename, []byte(defaultConfig), 0644); err != nil {
 				return fmt.Errorf("failed to write .debtdrone.yaml: %w", err)
 			}

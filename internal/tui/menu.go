@@ -288,12 +288,10 @@ func (m *MenuModel) renderInputLine() string {
 	return m.input[:m.cursorPos] + "█" + m.input[m.cursorPos:]
 }
 
-// View satisfies tea.Model.
 func (m *MenuModel) View() tea.View {
 	return tea.NewView(m.render())
 }
 
-// render produces the main menu prompt screen.
 func (m *MenuModel) render() string {
 	const boxWidth = 100
 
@@ -353,11 +351,6 @@ func (m *MenuModel) render() string {
 
 	var autocompleteBlock string
 	if len(m.suggestions) > 0 {
-		// Resolve the right-hand annotation for each suggestion row.
-		// Command mode: description from allCommands.
-		// Path mode:    a dim "directory" badge (the trailing "/" in the
-		//               suggestion name already signals it's a dir, but the
-		//               badge keeps the visual rhythm consistent).
 		annotation := func(s string) string {
 			if m.pathComplete {
 				return lipgloss.NewStyle().Foreground(suggestionDescFg).Render("directory")
@@ -428,7 +421,6 @@ func (m *MenuModel) render() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inner.String())
 }
 
-// renderHelp produces the /help overlay screen.
 func (m *MenuModel) renderHelp() string {
 	const boxWidth = 100
 	accentBlue := lipgloss.Color("#4fc3f7")
