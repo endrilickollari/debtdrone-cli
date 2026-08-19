@@ -85,7 +85,8 @@ func (a *LineCounter) Analyze(ctx context.Context, repo *git.Repository) (*scanc
 
 func isCodeFile(ext string) bool {
 	switch ext {
-	case ".go", ".js", ".ts", ".tsx", ".jsx", ".py", ".java", ".cs", ".c", ".cpp", ".h", ".rb", ".php":
+	case ".go", ".js", ".ts", ".tsx", ".jsx", ".py", ".java", ".cs", ".c", ".cpp", ".h", ".rb", ".php",
+		".rs", ".kt", ".kts", ".swift", ".scala", ".r", ".m", ".mm", ".sh", ".bash", ".zsh":
 		return true
 	default:
 		return false

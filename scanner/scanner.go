@@ -240,6 +240,9 @@ func (a legacyAnalyzer) Analyze(ctx context.Context) (AnalyzerResult, error) {
 		return AnalyzerResult{}, err
 	}
 	converted := AnalyzerResult{Metrics: metricsFromMap(result.Metrics)}
+	for _, message := range result.Warnings {
+		converted.Warnings = append(converted.Warnings, Warning{AnalyzerID: a.id, Message: message})
+	}
 	for _, issue := range result.Issues {
 		finding := Finding{
 			Fingerprint:        issue.FingerprintHash,
