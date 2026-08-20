@@ -12,6 +12,7 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
 	gitservice "github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
+	"github.com/endrilickollari/debtdrone-cli/v2/scanner/repostructure"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/stretchr/testify/assert"
@@ -151,6 +152,51 @@ func TestScanReturnsNeutralMetrics(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, report.Metrics, "line_counter")
 	assert.EqualValues(t, 3, metricValue(t, report.Metrics["line_counter"], "loc"))
+}
+
+func TestScanReturnsRepositoryStructureMetrics(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "go.mod", "module example.com/test\n\ngo 1.26\n"))
+	require.NoError(t, writeTestFile(root, "cmd/server/main.go", "package main\n\nfunc main() {}\n"))
+
+	report, err := Scan(context.Background(), root, DefaultOptions())
+	require.NoError(t, err)
+	require.Contains(t, report.Metrics, "repository_structure")
+	roots, ok := metricValue(t, report.Metrics["repository_structure"], "build_roots").([]repostructure.BuildRoot)
+	require.True(t, ok)
+	require.Len(t, roots, 1)
+	assert.Equal(t, ".", roots[0].Dir)
+	assert.Equal(t, "go", roots[0].Tool)
+	assert.Equal(t, "golang:1.26-alpine", roots[0].DockerImage)
+	assert.Equal(t, []string{"cmd/server/main.go"}, metricValue(t, report.Metrics["repository_structure"], "entry_points"))
+}
+
+func TestRepositoryStructureMetricsAreStableAcrossCheckoutPaths(t *testing.T) {
+	metrics := make([][]Metric, 0, 2)
+	for range 2 {
+		root := t.TempDir()
+		require.NoError(t, writeTestFile(root, "go.mod", "module example.com/test\n\ngo 1.26\n"))
+		require.NoError(t, writeTestFile(root, "cmd/server/main.go", "package main\n\nfunc main() {}\n"))
+
+		report, err := Scan(context.Background(), root, DefaultOptions())
+		require.NoError(t, err)
+		metrics = append(metrics, report.Metrics["repository_structure"])
+	}
+
+	assert.Equal(t, metrics[0], metrics[1])
+}
+
+func TestScanReturnsPartialRepositoryStructureWarnings(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "package.json", "{"))
+	require.NoError(t, writeTestFile(root, "index.js", "export const value = true;\n"))
+
+	report, err := Scan(context.Background(), root, DefaultOptions())
+	require.NoError(t, err)
+	require.Contains(t, report.Metrics, "repository_structure")
+	require.Len(t, report.Warnings, 1)
+	assert.Equal(t, "repository_structure", report.Warnings[0].AnalyzerID)
+	assert.Contains(t, report.Warnings[0].Message, "package.json")
 }
 
 func TestScanReturnsCancellationDuringTargetPreparation(t *testing.T) {
