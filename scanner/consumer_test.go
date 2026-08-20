@@ -24,10 +24,12 @@ import (
 	"testing"
 
 	"github.com/endrilickollari/debtdrone-cli/v2/scanner"
+	"github.com/endrilickollari/debtdrone-cli/v2/scanner/repostructure"
 )
 
 func TestConsumer(t *testing.T) {
 	_, _ = scanner.Scan(context.Background(), ".", scanner.DefaultOptions())
+	_ = repostructure.Detect(context.Background(), ".")
 }
 `
 	require.NoError(t, os.WriteFile(filepath.Join(consumerRoot, "go.mod"), []byte(goMod), 0o600))

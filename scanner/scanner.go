@@ -17,6 +17,7 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
+	"github.com/endrilickollari/debtdrone-cli/v2/scanner/repostructure"
 	"github.com/go-git/go-billy/v5/util"
 	"github.com/google/uuid"
 )
@@ -46,6 +47,8 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 	ctx = context.WithValue(ctx, "repositoryID", uuid.New())
 	ctx = context.WithValue(ctx, "userID", uuid.New())
 	ctx = context.WithValue(ctx, "isCLI", true)
+	structure := repostructure.Detect(ctx, repo.Path)
+	ctx = repostructure.WithContext(ctx, structure)
 	targetFiles, filterWarnings, err := prepareTargetFiles(ctx, repo, options.Scope)
 	if err != nil {
 		return Report{}, err
@@ -71,8 +74,47 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 	}
 
 	report, err := (Runner{MaxParallel: options.MaxParallel, OnProgress: options.OnProgress}).Run(ctx, coreAnalyzers)
+	report.Metrics["repository_structure"] = repositoryStructureMetrics(structure)
+	for _, message := range structure.Warnings {
+		report.Warnings = append(report.Warnings, Warning{AnalyzerID: "repository_structure", Message: message})
+	}
 	report.Warnings = append(filterWarnings, report.Warnings...)
 	return report, err
+}
+
+func repositoryStructureMetrics(structure *repostructure.Structure) []Metric {
+	buildRoots := make([]repostructure.BuildRoot, len(structure.BuildRoots))
+	for index, root := range structure.BuildRoots {
+		buildRoots[index] = root
+		buildRoots[index].Dir = repositoryRelativePath(structure.RepoRoot, root.Dir)
+	}
+	return []Metric{
+		{Name: "build_roots", Value: buildRoots},
+		{Name: "doc_dirs", Value: repositoryRelativePaths(structure.RepoRoot, structure.DocDirs)},
+		{Name: "entry_points", Value: repositoryRelativePaths(structure.RepoRoot, structure.EntryPoints)},
+		{Name: "is_monorepo", Value: structure.IsMonorepo},
+		{Name: "source_roots", Value: repositoryRelativePaths(structure.RepoRoot, structure.SourceRoots)},
+		{Name: "test_dirs", Value: repositoryRelativePaths(structure.RepoRoot, structure.TestDirs)},
+	}
+}
+
+func repositoryRelativePaths(repoRoot string, values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, len(values))
+	for index, value := range values {
+		result[index] = repositoryRelativePath(repoRoot, value)
+	}
+	return result
+}
+
+func repositoryRelativePath(repoRoot, value string) string {
+	relative, err := filepath.Rel(repoRoot, value)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(relative)
 }
 
 func validateScope(scope Scope) error {
