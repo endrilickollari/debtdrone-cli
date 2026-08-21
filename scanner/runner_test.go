@@ -138,9 +138,47 @@ func TestNoChangesSkipsUnavailableOptionalCapabilities(t *testing.T) {
 	assert.Empty(t, report.Metrics)
 }
 
-func TestScanRejectsUnavailableCoverageCapability(t *testing.T) {
-	_, err := Scan(context.Background(), ".", Options{Coverage: CoverageOptions{Enabled: true}})
-	require.EqualError(t, err, "coverage scanning is not available until Phase 2")
+func TestScanCoverageIsOptInAndReturnsNeutralResults(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "go.mod", "module example.com/test\n\ngo 1.26\n"))
+	require.NoError(t, writeTestFile(root, "pkg/a.go", "package pkg\n"))
+
+	disabled, err := Scan(context.Background(), root, DefaultOptions())
+	require.NoError(t, err)
+	assert.NotContains(t, disabled.Metrics, coverageAnalyzerID)
+
+	options := DefaultOptions()
+	options.Coverage = CoverageOptions{Enabled: true, Artifacts: []CoverageArtifact{{
+		Name:    "coverage.out",
+		Content: []byte("mode: atomic\nexample.com/test/pkg/a.go:1.1,1.5 1 0\n"),
+	}}}
+	enabled, err := Scan(context.Background(), root, options)
+	require.NoError(t, err)
+	require.Contains(t, enabled.Metrics, coverageAnalyzerID)
+	assert.Equal(t, "go", metricValue(t, enabled.Metrics[coverageAnalyzerID], "coverage_format"))
+	assert.EqualValues(t, 0, metricValue(t, enabled.Metrics[coverageAnalyzerID], "test_coverage_percentage"))
+	require.Len(t, enabled.Findings, 1)
+	assert.Equal(t, "/pkg/a.go", enabled.Findings[0].Location.Path)
+	assert.Equal(t, "zero-coverage", *enabled.Findings[0].RuleID)
+	assert.NotEmpty(t, enabled.Findings[0].Fingerprint)
+}
+
+func TestScanCoveragePassesArtifactRootsForMonorepoNormalization(t *testing.T) {
+	root := t.TempDir()
+	for _, project := range []string{"frontend", "backend"} {
+		require.NoError(t, writeTestFile(root, filepath.Join(project, "package.json"), `{"devDependencies":{"vitest":"latest"}}`))
+		require.NoError(t, writeTestFile(root, filepath.Join(project, "src", "app.ts"), "export {}\n"))
+	}
+	options := DefaultOptions()
+	options.Coverage = CoverageOptions{Enabled: true, Artifacts: []CoverageArtifact{
+		{Name: "lcov.info", Root: "frontend", Content: []byte("SF:src/app.ts\nDA:1,1\nend_of_record\n")},
+		{Name: "lcov.info", Root: "backend", Content: []byte("SF:src/app.ts\nDA:1,1\nend_of_record\n")},
+	}}
+
+	report, err := Scan(context.Background(), root, options)
+	require.NoError(t, err)
+	assert.Equal(t, "combined", metricValue(t, report.Metrics[coverageAnalyzerID], "coverage_format"))
+	assert.EqualValues(t, 2, metricValue(t, report.Metrics[coverageAnalyzerID], "coverage_files_total"))
 }
 
 func TestScanReturnsNeutralMetrics(t *testing.T) {

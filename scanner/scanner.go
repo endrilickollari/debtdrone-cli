@@ -17,6 +17,7 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
+	coveragecore "github.com/endrilickollari/debtdrone-cli/v2/scanner/coverage"
 	"github.com/endrilickollari/debtdrone-cli/v2/scanner/repostructure"
 	"github.com/go-git/go-billy/v5/util"
 	"github.com/google/uuid"
@@ -34,10 +35,6 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 	if options.Scope.Mode == ScopeNoChanges {
 		return Report{Metrics: make(map[string][]Metric)}, nil
 	}
-	if options.Coverage.Enabled {
-		return Report{}, fmt.Errorf("coverage scanning is not available until Phase 2")
-	}
-
 	repo, err := git.NewService().OpenLocal(path)
 	if err != nil {
 		return Report{}, fmt.Errorf("open repository: %w", err)
@@ -71,6 +68,20 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 	}
 	if options.Security.Enabled {
 		coreAnalyzers = append(coreAnalyzers, legacyAnalyzer{id: "trivy", analyzer: security.NewTrivyAnalyzer(), repo: repo})
+	}
+	if options.Coverage.Enabled {
+		artifacts := make([]coveragecore.Artifact, len(options.Coverage.Artifacts))
+		for index, artifact := range options.Coverage.Artifacts {
+			artifacts[index] = coveragecore.Artifact{Name: artifact.Name, Root: artifact.Root, Content: append([]byte(nil), artifact.Content...)}
+		}
+		coreAnalyzers = append(coreAnalyzers, coverageAnalyzer{
+			repoRoot: repo.Path,
+			roots:    structure.BuildRoots,
+			options: coveragecore.Options{
+				Artifacts:     artifacts,
+				RunLocalTests: options.Coverage.RunLocalTests,
+			},
+		})
 	}
 
 	report, err := (Runner{MaxParallel: options.MaxParallel, OnProgress: options.OnProgress}).Run(ctx, coreAnalyzers)

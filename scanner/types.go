@@ -43,10 +43,22 @@ type SecurityOptions struct {
 	Enabled bool
 }
 
-// CoverageOptions reserves the public capability boundary for Phase 2.
-// Scan returns an explicit error when it is enabled until coverage adapters land.
+// CoverageArtifact is an in-memory report supplied by a scanner consumer.
+type CoverageArtifact struct {
+	Name string
+	// Root identifies the repository-relative build root that produced the
+	// artifact. It is required to disambiguate uploads in monorepositories.
+	Root    string
+	Content []byte
+}
+
+// CoverageOptions controls artifact parsing and optional local test execution.
+// Coverage is disabled by default. RunLocalTests must be enabled separately
+// because it executes code from the scanned repository.
 type CoverageOptions struct {
-	Enabled bool
+	Enabled       bool
+	Artifacts     []CoverageArtifact
+	RunLocalTests bool
 }
 
 type Options struct {
