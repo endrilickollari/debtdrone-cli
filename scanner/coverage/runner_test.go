@@ -21,6 +21,17 @@ type fakeCommandRunner struct {
 	run          func(directory, name string, args []string) error
 }
 
+type fakeIsolatedExecutor struct {
+	requests  []ExecutionRequest
+	artifacts []Artifact
+	err       error
+}
+
+func (executor *fakeIsolatedExecutor) Execute(_ context.Context, request ExecutionRequest) ([]Artifact, error) {
+	executor.requests = append(executor.requests, request)
+	return executor.artifacts, executor.err
+}
+
 func (runner *fakeCommandRunner) LookPath(name string) (string, error) {
 	if runner.allAvailable || runner.available[name] {
 		return "/tools/" + name, nil
@@ -97,6 +108,24 @@ func TestRepositoryExecutableRejectsSymlinkOutsideBuildRoot(t *testing.T) {
 
 	_, ok := repositoryExecutable(root, filepath.Join("node_modules", ".bin", "vitest"))
 	assert.False(t, ok)
+}
+
+func TestIsolatedCommandDoesNotUseExcludedDependencyExecutable(t *testing.T) {
+	root := t.TempDir()
+	binDir := filepath.Join(root, "node_modules", ".bin")
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
+	runner := filepath.Join(binDir, "vitest")
+	require.NoError(t, os.WriteFile(runner, []byte("#!/bin/sh\n"), 0o700))
+	buildRoot := repostructure.BuildRoot{Dir: root, Language: "TypeScript/JS", TestRunner: "vitest"}
+
+	local, ok := localCoverageCommand(buildRoot)
+	require.True(t, ok)
+	isolated, ok := isolatedCoverageCommand(buildRoot)
+	require.True(t, ok)
+	resolvedRunner, err := filepath.EvalSymlinks(runner)
+	require.NoError(t, err)
+	assert.Equal(t, resolvedRunner, local.name)
+	assert.Equal(t, "vitest", isolated.name)
 }
 
 func TestRubyCoverageUsesRakeForRakeProjects(t *testing.T) {
@@ -181,4 +210,116 @@ func TestAvailableRuntimeRunsBoundedKnownCommand(t *testing.T) {
 	assert.Empty(t, warnings)
 	assert.Equal(t, "go", runner.name)
 	assert.Equal(t, []string{"test", "-coverprofile=coverage.out", "-covermode=atomic", "-timeout=90s", "-p=4", "./..."}, runner.args)
+}
+
+func TestIsolatedExecutorProducesCoverageWithoutLocalRuntime(t *testing.T) {
+	repoRoot := t.TempDir()
+	root := repostructure.BuildRoot{
+		Dir:          repoRoot,
+		Language:     "Go",
+		ManifestFile: "go.mod",
+		DockerImage:  "golang:1.25-alpine",
+	}
+	executor := &fakeIsolatedExecutor{artifacts: []Artifact{{
+		Name:    "coverage.out",
+		Content: []byte("mode: atomic\nexample.com/project/main.go:1.1,1.5 1 1\n"),
+	}}}
+
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{root}, Options{IsolatedExecutor: executor})
+	require.NoError(t, err)
+	require.NotNil(t, result.Report)
+	require.Len(t, executor.requests, 1)
+	request := executor.requests[0]
+	assert.Equal(t, repoRoot, request.SourceDir)
+	assert.Equal(t, "golang:1.25-alpine", request.SuggestedImage)
+	assert.Equal(t, "go", request.Command[0])
+	assert.Contains(t, request.ArtifactPaths, "coverage.out")
+}
+
+func TestIsolatedExecutorFailureIsRecoverableWarning(t *testing.T) {
+	repoRoot := t.TempDir()
+	executor := &fakeIsolatedExecutor{err: errors.New("runner unavailable")}
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{{
+		Dir: repoRoot, Language: "Go", DockerImage: "golang:1.25-alpine",
+	}}, Options{IsolatedExecutor: executor})
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Report)
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0], "runner unavailable")
+}
+
+func TestHostedExecutorCanReplaceMissingSuggestedImage(t *testing.T) {
+	repoRoot := t.TempDir()
+	executor := &fakeIsolatedExecutor{artifacts: []Artifact{{
+		Name:    "coverage.out",
+		Content: []byte("mode: atomic\nexample.com/project/main.go:1.1,1.5 1 1\n"),
+	}}}
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{{
+		Dir: repoRoot, Language: "Go",
+	}}, Options{IsolatedExecutor: executor})
+
+	require.NoError(t, err)
+	require.NotNil(t, result.Report)
+	require.Len(t, executor.requests, 1)
+	assert.Empty(t, executor.requests[0].SuggestedImage)
+}
+
+func TestIsolatedExecutorDoesNotRunBuildRootOutsideRepository(t *testing.T) {
+	repoRoot := t.TempDir()
+	executor := &fakeIsolatedExecutor{}
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{{
+		Dir: t.TempDir(), Language: "Go",
+	}}, Options{IsolatedExecutor: executor})
+
+	require.NoError(t, err)
+	assert.Empty(t, executor.requests)
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0], "outside the repository")
+}
+
+func TestIsolatedExecutorRejectsBuildRootThroughAncestorSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating symlinks requires additional Windows privileges")
+	}
+	repoRoot := t.TempDir()
+	outside := t.TempDir()
+	outsideRoot := filepath.Join(outside, "project")
+	require.NoError(t, os.Mkdir(outsideRoot, 0o700))
+	require.NoError(t, os.Symlink(outside, filepath.Join(repoRoot, "linked")))
+	executor := &fakeIsolatedExecutor{}
+
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{{
+		Dir: filepath.Join(repoRoot, "linked", "project"), Language: "Go",
+	}}, Options{IsolatedExecutor: executor})
+
+	require.NoError(t, err)
+	assert.Empty(t, executor.requests)
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0], "outside the repository")
+}
+
+func TestCoverageExecutionModesAreMutuallyExclusive(t *testing.T) {
+	repoRoot := t.TempDir()
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{{Dir: repoRoot}}, Options{
+		Artifacts:        []Artifact{{Name: "coverage.out", Content: []byte("mode: atomic\n")}},
+		RunLocalTests:    true,
+		IsolatedExecutor: &fakeIsolatedExecutor{},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, result.Warnings[0], "cannot enable both")
+}
+
+func TestSuppliedArtifactDoesNotInvokeIsolatedExecutor(t *testing.T) {
+	repoRoot := t.TempDir()
+	executor := &fakeIsolatedExecutor{err: errors.New("must not run")}
+	result, err := Analyze(context.Background(), repoRoot, []repostructure.BuildRoot{{Dir: repoRoot}}, Options{
+		Artifacts:        []Artifact{{Name: "coverage.out", Content: []byte("mode: atomic\nexample.com/project/main.go:1.1,1.5 1 1\n")}},
+		IsolatedExecutor: executor,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result.Report)
+	assert.Empty(t, executor.requests)
 }

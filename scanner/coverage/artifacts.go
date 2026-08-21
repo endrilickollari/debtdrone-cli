@@ -40,40 +40,31 @@ type candidate struct {
 	source  string
 }
 
-// Analyze parses repository or supplied artifacts and optionally invokes local
-// test runners when no artifact is available.
+// Analyze parses repository or supplied artifacts and optionally invokes one
+// explicitly configured execution capability when no artifact is available.
 func Analyze(ctx context.Context, repoRoot string, roots []repostructure.BuildRoot, options Options) (Result, error) {
 	return analyzeWithRunner(ctx, repoRoot, roots, options, defaultCommandRunner())
 }
 
 func analyzeWithRunner(ctx context.Context, repoRoot string, roots []repostructure.BuildRoot, options Options, runner commandRunner) (Result, error) {
+	if options.RunLocalTests && options.IsolatedExecutor != nil {
+		return Result{Warnings: []string{"coverage execution cannot enable both local tests and an isolated executor"}}, fmt.Errorf("coverage execution modes are mutually exclusive")
+	}
 	parsers := defaultParsers()
 	if len(roots) == 0 {
 		roots = []repostructure.BuildRoot{{Dir: repoRoot}}
 	}
 	candidates, warnings := discoverCandidates(ctx, roots, parsers)
 	if len(candidates) == 0 {
-		for _, artifact := range options.Artifacts {
-			if len(artifact.Content) > int(maxArtifactSize) {
-				warnings = append(warnings, fmt.Sprintf("coverage artifact %q exceeds the %d-byte limit", artifact.Name, maxArtifactSize))
-				continue
-			}
-			if parserFor(artifact.Name, parsers) == nil {
-				warnings = append(warnings, fmt.Sprintf("coverage artifact %q has an unsupported format", artifact.Name))
-				continue
-			}
-			artifactRoot, err := artifactBuildRoot(repoRoot, roots, artifact)
-			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("coverage artifact %q: %v", artifact.Name, err))
-				continue
-			}
-			candidates = append(candidates, candidate{
-				name:    filepath.Base(artifact.Name),
-				content: append([]byte(nil), artifact.Content...),
-				root:    artifactRoot,
-				source:  artifact.Name,
-			})
+		candidates, warnings = appendArtifactCandidates(repoRoot, roots, parsers, candidates, warnings, options.Artifacts)
+	}
+	if len(candidates) == 0 && options.IsolatedExecutor != nil {
+		artifacts, executorWarnings, err := runIsolatedTests(ctx, repoRoot, roots, options.IsolatedExecutor)
+		warnings = append(warnings, executorWarnings...)
+		if err != nil {
+			return Result{Warnings: uniqueSorted(warnings)}, err
 		}
+		candidates, warnings = appendArtifactCandidates(repoRoot, roots, parsers, candidates, warnings, artifacts)
 	}
 	if len(candidates) == 0 && options.RunLocalTests {
 		runnerWarnings := runLocalTests(ctx, roots, runner)
@@ -110,6 +101,31 @@ func analyzeWithRunner(ctx context.Context, repoRoot string, roots []repostructu
 		return Result{Warnings: uniqueSorted(warnings)}, nil
 	}
 	return Result{Report: mergeReports(reports), Warnings: uniqueSorted(warnings)}, nil
+}
+
+func appendArtifactCandidates(repoRoot string, roots []repostructure.BuildRoot, parsers []Parser, candidates []candidate, warnings []string, artifacts []Artifact) ([]candidate, []string) {
+	for _, artifact := range artifacts {
+		if len(artifact.Content) > int(maxArtifactSize) {
+			warnings = append(warnings, fmt.Sprintf("coverage artifact %q exceeds the %d-byte limit", artifact.Name, maxArtifactSize))
+			continue
+		}
+		if parserFor(artifact.Name, parsers) == nil {
+			warnings = append(warnings, fmt.Sprintf("coverage artifact %q has an unsupported format", artifact.Name))
+			continue
+		}
+		artifactRoot, err := artifactBuildRoot(repoRoot, roots, artifact)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("coverage artifact %q: %v", artifact.Name, err))
+			continue
+		}
+		candidates = append(candidates, candidate{
+			name:    filepath.Base(artifact.Name),
+			content: append([]byte(nil), artifact.Content...),
+			root:    artifactRoot,
+			source:  artifact.Name,
+		})
+	}
+	return candidates, warnings
 }
 
 func artifactBuildRoot(repoRoot string, roots []repostructure.BuildRoot, artifact Artifact) (string, error) {

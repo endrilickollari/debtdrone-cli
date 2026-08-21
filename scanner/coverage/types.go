@@ -1,6 +1,8 @@
-// Package coverage parses coverage artifacts and optionally invokes local test
-// runners without depending on CLI or SaaS infrastructure.
+// Package coverage parses coverage artifacts and exposes optional local and
+// isolated execution capabilities without depending on SaaS infrastructure.
 package coverage
+
+import "context"
 
 // Artifact is an in-memory coverage report supplied by a scanner consumer.
 type Artifact struct {
@@ -36,11 +38,40 @@ type Parser interface {
 	Parse(path string) (*Report, error)
 }
 
+// ExecutionRequest describes one coverage command without prescribing how or
+// where it is executed. SuggestedImage comes from static repository detection;
+// an executor may enforce or replace it according to its own policy.
+type ExecutionRequest struct {
+	SourceDir          string
+	Language           string
+	BuildTool          string
+	TestRunner         string
+	SuggestedImage     string
+	NativeDependencies []ExecutionDependency
+	Command            []string
+	ArtifactPaths      []string
+}
+
+// ExecutionDependency describes a system package that a hosted policy may
+// choose to install before running coverage.
+type ExecutionDependency struct {
+	Name    string
+	Version string
+}
+
+// IsolatedExecutor is the capability boundary for executing untrusted
+// repository code. SaaS consumers can provide hosted-runner policy without
+// coupling that policy to the scanner package.
+type IsolatedExecutor interface {
+	Execute(context.Context, ExecutionRequest) ([]Artifact, error)
+}
+
 // Options controls coverage collection. Test execution remains separately
 // opt-in because it executes repository code and may create coverage artifacts.
 type Options struct {
-	Artifacts     []Artifact
-	RunLocalTests bool
+	Artifacts        []Artifact
+	RunLocalTests    bool
+	IsolatedExecutor IsolatedExecutor
 }
 
 // Result contains normalized coverage data and recoverable diagnostics.

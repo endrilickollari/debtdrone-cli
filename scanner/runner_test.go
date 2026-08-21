@@ -12,6 +12,7 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/filepolicy"
 	gitservice "github.com/endrilickollari/debtdrone-cli/v2/internal/git"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/scancore"
+	coveragecore "github.com/endrilickollari/debtdrone-cli/v2/scanner/coverage"
 	"github.com/endrilickollari/debtdrone-cli/v2/scanner/repostructure"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
@@ -28,6 +29,15 @@ type testAnalyzer struct {
 }
 
 type warningCoreAnalyzer struct{}
+
+type scannerFakeIsolatedExecutor struct {
+	requests []coveragecore.ExecutionRequest
+}
+
+func (executor *scannerFakeIsolatedExecutor) Execute(_ context.Context, request coveragecore.ExecutionRequest) ([]coveragecore.Artifact, error) {
+	executor.requests = append(executor.requests, request)
+	return []coveragecore.Artifact{{Name: "coverage.out", Content: []byte("mode: atomic\nexample.com/test/pkg/a.go:1.1,1.5 1 1\n")}}, nil
+}
 
 func (warningCoreAnalyzer) Name() string { return "Warning analyzer" }
 func (warningCoreAnalyzer) Analyze(context.Context, *gitservice.Repository) (*scancore.Result, error) {
@@ -179,6 +189,25 @@ func TestScanCoveragePassesArtifactRootsForMonorepoNormalization(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "combined", metricValue(t, report.Metrics[coverageAnalyzerID], "coverage_format"))
 	assert.EqualValues(t, 2, metricValue(t, report.Metrics[coverageAnalyzerID], "coverage_files_total"))
+}
+
+func TestScanPassesDetectedBuildMetadataToIsolatedExecutor(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "go.mod", "module example.com/test\n\ngo 1.25\n"))
+	require.NoError(t, writeTestFile(root, "pkg/a.go", "package pkg\n"))
+	executor := &scannerFakeIsolatedExecutor{}
+	options := DefaultOptions()
+	options.Coverage = CoverageOptions{Enabled: true, IsolatedExecutor: executor}
+
+	report, err := Scan(context.Background(), root, options)
+	require.NoError(t, err)
+	require.Contains(t, report.Metrics, coverageAnalyzerID)
+	require.Len(t, executor.requests, 1)
+	request := executor.requests[0]
+	assert.Equal(t, "Go", request.Language)
+	assert.Equal(t, "go", request.BuildTool)
+	assert.Equal(t, "golang:1.25-alpine", request.SuggestedImage)
+	assert.Equal(t, []string{"go", "test", "-coverprofile=coverage.out", "-covermode=atomic", "-timeout=90s", "-p=4", "./..."}, request.Command)
 }
 
 func TestScanReturnsNeutralMetrics(t *testing.T) {
