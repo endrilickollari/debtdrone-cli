@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	coveragecore "github.com/endrilickollari/debtdrone-cli/v2/scanner/coverage"
 )
 
 type ScopeMode string
@@ -52,13 +54,14 @@ type CoverageArtifact struct {
 	Content []byte
 }
 
-// CoverageOptions controls artifact parsing and optional local test execution.
-// Coverage is disabled by default. RunLocalTests must be enabled separately
-// because it executes code from the scanned repository.
+// CoverageOptions controls artifact parsing and optional test execution.
+// Coverage is disabled by default. RunLocalTests and IsolatedExecutor are
+// mutually exclusive because both execute code from the scanned repository.
 type CoverageOptions struct {
-	Enabled       bool
-	Artifacts     []CoverageArtifact
-	RunLocalTests bool
+	Enabled          bool
+	Artifacts        []CoverageArtifact
+	RunLocalTests    bool
+	IsolatedExecutor coveragecore.IsolatedExecutor
 }
 
 type Options struct {

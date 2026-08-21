@@ -78,8 +78,9 @@ func Scan(ctx context.Context, path string, options Options) (Report, error) {
 			repoRoot: repo.Path,
 			roots:    structure.BuildRoots,
 			options: coveragecore.Options{
-				Artifacts:     artifacts,
-				RunLocalTests: options.Coverage.RunLocalTests,
+				Artifacts:        artifacts,
+				RunLocalTests:    options.Coverage.RunLocalTests,
+				IsolatedExecutor: options.Coverage.IsolatedExecutor,
 			},
 		})
 	}

@@ -76,7 +76,99 @@ func runLocalTests(ctx context.Context, roots []repostructure.BuildRoot, runner 
 	return warnings
 }
 
+func runIsolatedTests(ctx context.Context, repoRoot string, roots []repostructure.BuildRoot, executor IsolatedExecutor) ([]Artifact, []string, error) {
+	var artifacts []Artifact
+	var warnings []string
+	for _, root := range roots {
+		if err := ctx.Err(); err != nil {
+			return artifacts, warnings, err
+		}
+		command, ok := isolatedCoverageCommand(root)
+		if !ok {
+			continue
+		}
+		relativeRoot, contained := canonicalBuildRoot(repoRoot, root.Dir)
+		if !contained {
+			warnings = append(warnings, fmt.Sprintf("isolated coverage for %s was skipped because the build root is outside the repository", displayRoot(root)))
+			continue
+		}
+		command.name = containerCommandName(root.Dir, command.name)
+		request := ExecutionRequest{
+			SourceDir:      root.Dir,
+			Language:       root.Language,
+			BuildTool:      root.Tool,
+			TestRunner:     root.TestRunner,
+			SuggestedImage: root.DockerImage,
+			Command:        append([]string{command.name}, command.args...),
+			ArtifactPaths:  append([]string(nil), knownRelativePaths...),
+		}
+		for _, dependency := range root.NativeDeps {
+			request.NativeDependencies = append(request.NativeDependencies, ExecutionDependency{Name: dependency.Name, Version: dependency.Version})
+		}
+		produced, err := executor.Execute(ctx, request)
+		if err != nil {
+			if ctx.Err() != nil {
+				return artifacts, warnings, ctx.Err()
+			}
+			warnings = append(warnings, fmt.Sprintf("isolated coverage for %s failed: %v", displayRoot(root), err))
+			continue
+		}
+		for _, artifact := range produced {
+			artifact.Root = filepath.ToSlash(relativeRoot)
+			artifacts = append(artifacts, artifact)
+		}
+	}
+	return artifacts, warnings, nil
+}
+
+func canonicalBuildRoot(repoRoot, buildRoot string) (string, bool) {
+	absoluteRepo, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", false
+	}
+	absoluteBuild, err := filepath.Abs(buildRoot)
+	if err != nil {
+		return "", false
+	}
+	relativeRoot, err := filepath.Rel(absoluteRepo, absoluteBuild)
+	if err != nil || (relativeRoot != "." && !safeRelativeArtifactPath(relativeRoot)) {
+		return "", false
+	}
+	resolvedRepo, err := filepath.EvalSymlinks(absoluteRepo)
+	if err != nil {
+		return "", false
+	}
+	resolvedBuild, err := filepath.EvalSymlinks(absoluteBuild)
+	if err != nil {
+		return "", false
+	}
+	canonicalRelative, err := filepath.Rel(resolvedRepo, resolvedBuild)
+	if err != nil || (canonicalRelative != "." && !safeRelativeArtifactPath(canonicalRelative)) {
+		return "", false
+	}
+	return relativeRoot, true
+}
+
+func containerCommandName(root, name string) string {
+	if !filepath.IsAbs(name) {
+		return name
+	}
+	relative, err := filepath.Rel(root, name)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return filepath.Base(name)
+	}
+	return "./" + filepath.ToSlash(relative)
+}
+
 func localCoverageCommand(root repostructure.BuildRoot) (localCommand, bool) {
+	return coverageCommand(root, true)
+}
+
+func isolatedCoverageCommand(root repostructure.BuildRoot) (localCommand, bool) {
+	return coverageCommand(root, false)
+}
+
+func coverageCommand(root repostructure.BuildRoot, useRepositoryExecutables bool) (localCommand, bool) {
 	switch strings.ToLower(root.Language) {
 	case "go":
 		return localCommand{required: []string{"go"}, name: "go", args: []string{"test", "-coverprofile=coverage.out", "-covermode=atomic", "-timeout=90s", "-p=4", "./..."}}, true
@@ -86,8 +178,10 @@ func localCoverageCommand(root repostructure.BuildRoot) (localCommand, bool) {
 			return localCommand{}, false
 		}
 		args := nodeCoverageArgs(testRunner)
-		if localRunner, ok := repositoryExecutable(root.Dir, filepath.Join("node_modules", ".bin", testRunner)); ok {
-			return localCommand{name: localRunner, args: args}, true
+		if useRepositoryExecutables {
+			if localRunner, ok := repositoryExecutable(root.Dir, filepath.Join("node_modules", ".bin", testRunner)); ok {
+				return localCommand{name: localRunner, args: args}, true
+			}
 		}
 		return localCommand{required: []string{testRunner}, name: testRunner, args: args}, true
 	case "python":
@@ -112,11 +206,13 @@ func localCoverageCommand(root repostructure.BuildRoot) (localCommand, bool) {
 		}
 		return localCommand{required: []string{"bundle"}, name: "bundle", args: []string{"exec", testRunner}}, true
 	case "php":
-		phpunit := filepath.Join(root.Dir, "vendor", "bin", "phpunit")
-		if !regularExecutable(phpunit) {
-			return localCommand{required: []string{"phpunit"}, name: "phpunit", args: []string{"--coverage-clover", "clover.xml"}}, true
+		if useRepositoryExecutables {
+			phpunit := filepath.Join(root.Dir, "vendor", "bin", "phpunit")
+			if regularExecutable(phpunit) {
+				return localCommand{name: phpunit, args: []string{"--coverage-clover", "clover.xml"}}, true
+			}
 		}
-		return localCommand{name: phpunit, args: []string{"--coverage-clover", "clover.xml"}}, true
+		return localCommand{required: []string{"phpunit"}, name: "phpunit", args: []string{"--coverage-clover", "clover.xml"}}, true
 	}
 	return localCommand{}, false
 }

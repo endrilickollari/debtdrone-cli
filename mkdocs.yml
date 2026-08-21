@@ -47,5 +47,6 @@ nav:
   - User Guides:
       - Interactive TUI: tui-usage.md
       - CI/CD & Headless CLI: headless-usage.md
+      - Coverage execution for Go consumers: scanner-coverage.md
   - Reference:
       - System Architecture: architecture.md
