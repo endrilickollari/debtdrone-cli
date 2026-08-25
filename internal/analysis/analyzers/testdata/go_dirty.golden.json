@@ -4,6 +4,34 @@
   "complexity_functions_analyzed": 1,
   "complexity_high_functions": 1,
   "complexity_max_cyclomatic": 8,
+  "complexity_records": [
+    {
+      "code_snippet": "func ComplexFunction(a, b, c int) int {\n\tif a \u003e 0 {\n\t\tif b \u003e 0 {\n\t\t\tif c \u003e 0 {\n\t\t\t\treturn 1\n\t\t\t} else {\n\t\t\t\treturn 2\n\t\t\t}\n\t\t} else {\n\t\t\tif c \u003e 0 {\n\t\t\t\treturn 3\n\t\t\t} else {\n\t\t\t\treturn 4\n\t\t\t}\n\t\t}\n\t} else {\n\t\tfor i := 0; i \u003c 10; i++ {\n\t\t\tif i%2 == 0 {\n\t\t\t\tfmt.Println(i)\n\t\t\t} else {\n\t\t\t\tif i%3 == 0 {\n\t\t\t\t\tfmt.Println(\"fizz\")\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn 0\n}",
+      "cognitive_complexity": 18,
+      "cyclomatic_complexity": 8,
+      "end_column": 2,
+      "end_line": 32,
+      "file_path": "/complex.go",
+      "function_name": "ComplexFunction",
+      "language": "Go",
+      "lines_of_code": 28,
+      "nesting_depth": 3,
+      "parameter_count": 3,
+      "refactoring_suggestions": [
+        {
+          "description": "Simplify the mental model required to understand this code",
+          "priority": "high",
+          "reason": "Cognitive complexity of 18 makes code difficult to comprehend",
+          "title": "Reduce Cognitive Complexity",
+          "type": "simplify_logic"
+        }
+      ],
+      "severity": "high",
+      "start_column": 1,
+      "start_line": 5,
+      "technical_debt_minutes": 0
+    }
+  ],
   "complexity_total_debt_hours": 0,
   "file_count": 1,
   "issues": [

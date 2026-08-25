@@ -4,6 +4,23 @@
   "complexity_functions_analyzed": 1,
   "complexity_high_functions": 0,
   "complexity_max_cyclomatic": 8,
+  "complexity_records": [
+    {
+      "code_snippet": "{\n    if (input \u003e 10) {\n        if (input \u003c 20) {\n            return \"Medium\";\n        } else if (input \u003c 50) {\n            return \"High\";\n        } else {\n             if (input % 2 === 0) {\n                 return \"Very High Even\";\n             } else {\n                 return \"Very High Odd\";\n             }\n        }\n    } else {\n        switch(input) {\n            case 1:\n                return \"One\";\n            case 2:\n                return \"Two\";\n            case 3:\n                return \"Three\";\n            default:\n                return \"Low\";\n        }\n    }\n}",
+      "cognitive_complexity": 19,
+      "cyclomatic_complexity": 8,
+      "end_line": 26,
+      "file_path": "/messy.ts",
+      "function_name": "complexLogic",
+      "language": "",
+      "lines_of_code": 26,
+      "nesting_depth": 3,
+      "parameter_count": 1,
+      "severity": "medium",
+      "start_line": 1,
+      "technical_debt_minutes": 0
+    }
+  ],
   "complexity_total_debt_hours": 0,
   "file_count": 1,
   "issues": [],
