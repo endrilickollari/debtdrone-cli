@@ -41,6 +41,43 @@ type ComplexityOptions struct {
 	MaxCyclomatic int
 }
 
+// ComplexityRecord is a persistence-neutral function-level measurement. It
+// deliberately excludes ownership IDs, timestamps, and database metadata so
+// consumers can attach their own persistence context.
+type ComplexityRecord struct {
+	Path                   string                  `json:"path"`
+	FunctionName           string                  `json:"function_name"`
+	StartLine              int                     `json:"start_line"`
+	EndLine                int                     `json:"end_line"`
+	StartColumn            *int                    `json:"start_column,omitempty"`
+	EndColumn              *int                    `json:"end_column,omitempty"`
+	CyclomaticComplexity   int                     `json:"cyclomatic_complexity"`
+	CognitiveComplexity    *int                    `json:"cognitive_complexity,omitempty"`
+	NestingDepth           int                     `json:"nesting_depth"`
+	ParameterCount         int                     `json:"parameter_count"`
+	LinesOfCode            int                     `json:"lines_of_code"`
+	HalsteadVolume         *float64                `json:"halstead_volume,omitempty"`
+	HalsteadDifficulty     *float64                `json:"halstead_difficulty,omitempty"`
+	HalsteadEffort         *float64                `json:"halstead_effort,omitempty"`
+	HalsteadTime           *float64                `json:"halstead_time,omitempty"`
+	HalsteadBugs           *float64                `json:"halstead_bugs,omitempty"`
+	Severity               string                  `json:"severity"`
+	Category               *string                 `json:"category,omitempty"`
+	TechnicalDebtMinutes   int                     `json:"technical_debt_minutes"`
+	CodeSnippet            *string                 `json:"code_snippet,omitempty"`
+	RefactoringSuggestions []RefactoringSuggestion `json:"refactoring_suggestions,omitempty"`
+	Language               string                  `json:"language"`
+	Metadata               *string                 `json:"metadata,omitempty"`
+}
+
+type RefactoringSuggestion struct {
+	Type        string `json:"type"`
+	Priority    string `json:"priority"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Reason      string `json:"reason"`
+}
+
 type SecurityOptions struct {
 	Enabled bool
 }

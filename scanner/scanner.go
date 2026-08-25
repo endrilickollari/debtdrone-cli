@@ -293,6 +293,13 @@ func (a legacyAnalyzer) Analyze(ctx context.Context) (AnalyzerResult, error) {
 	if err != nil {
 		return AnalyzerResult{}, err
 	}
+	if rawRecords, ok := result.Metrics["complexity_records"]; ok {
+		records, valid := rawRecords.([]models.ComplexityMetric)
+		if !valid {
+			return AnalyzerResult{}, fmt.Errorf("complexity analyzer returned invalid record type %T", rawRecords)
+		}
+		result.Metrics["complexity_records"] = publicComplexityRecords(records)
+	}
 	converted := AnalyzerResult{Metrics: metricsFromMap(result.Metrics)}
 	for _, message := range result.Warnings {
 		converted.Warnings = append(converted.Warnings, Warning{AnalyzerID: a.id, Message: message})
@@ -319,6 +326,45 @@ func (a legacyAnalyzer) Analyze(ctx context.Context) (AnalyzerResult, error) {
 		converted.Findings = append(converted.Findings, finding)
 	}
 	return converted, nil
+}
+
+func publicComplexityRecords(metrics []models.ComplexityMetric) []ComplexityRecord {
+	records := make([]ComplexityRecord, 0, len(metrics))
+	for _, metric := range metrics {
+		suggestions := make([]RefactoringSuggestion, 0, len(metric.RefactoringSuggestions))
+		for _, suggestion := range metric.RefactoringSuggestions {
+			suggestions = append(suggestions, RefactoringSuggestion{
+				Type: suggestion.Type, Priority: suggestion.Priority, Title: suggestion.Title,
+				Description: suggestion.Description, Reason: suggestion.Reason,
+			})
+		}
+		records = append(records, ComplexityRecord{
+			Path:                   metric.FilePath,
+			FunctionName:           metric.FunctionName,
+			StartLine:              metric.StartLine,
+			EndLine:                metric.EndLine,
+			StartColumn:            metric.StartColumn,
+			EndColumn:              metric.EndColumn,
+			CyclomaticComplexity:   metric.CyclomaticComplexity,
+			CognitiveComplexity:    metric.CognitiveComplexity,
+			NestingDepth:           metric.NestingDepth,
+			ParameterCount:         metric.ParameterCount,
+			LinesOfCode:            metric.LinesOfCode,
+			HalsteadVolume:         metric.HalsteadVolume,
+			HalsteadDifficulty:     metric.HalsteadDifficulty,
+			HalsteadEffort:         metric.HalsteadEffort,
+			HalsteadTime:           metric.HalsteadTime,
+			HalsteadBugs:           metric.HalsteadBugs,
+			Severity:               metric.Severity,
+			Category:               metric.ComplexityCategory,
+			TechnicalDebtMinutes:   metric.TechnicalDebtMinutes,
+			CodeSnippet:            metric.CodeSnippet,
+			RefactoringSuggestions: suggestions,
+			Language:               metric.Language,
+			Metadata:               metric.Metadata,
+		})
+	}
+	return records
 }
 
 func fingerprint(finding Finding) string {

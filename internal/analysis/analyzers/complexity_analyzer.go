@@ -182,6 +182,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 
 	issues := a.convertToIssues(allMetrics)
 	summary := a.calculateSummary(allMetrics)
+	summary["complexity_records"] = allMetrics
 
 	return &scancore.Result{
 		Issues:  issues,

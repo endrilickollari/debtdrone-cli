@@ -4,6 +4,25 @@
   "complexity_functions_analyzed": 1,
   "complexity_high_functions": 0,
   "complexity_max_cyclomatic": 1,
+  "complexity_records": [
+    {
+      "code_snippet": "func main() {\n\tfmt.Println(\"Hello, World!\")\n}",
+      "cognitive_complexity": 0,
+      "cyclomatic_complexity": 1,
+      "end_column": 2,
+      "end_line": 7,
+      "file_path": "/main.go",
+      "function_name": "main",
+      "language": "Go",
+      "lines_of_code": 3,
+      "nesting_depth": 0,
+      "parameter_count": 0,
+      "severity": "low",
+      "start_column": 1,
+      "start_line": 5,
+      "technical_debt_minutes": 0
+    }
+  ],
   "complexity_total_debt_hours": 0,
   "file_count": 1,
   "issues": [],

@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -392,6 +393,34 @@ func TestFullScanFiltersGeneratedAssetsAndUnsafeFiles(t *testing.T) {
 	require.Len(t, report.Warnings, 1)
 	assert.Equal(t, "scanner", report.Warnings[0].AnalyzerID)
 	assert.Contains(t, report.Warnings[0].Message, "/oversized.go skipped: file exceeds maximum size limit")
+}
+
+func TestScanExposesNeutralFunctionLevelComplexityRecords(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "main.go", `package main
+
+func work(input int) int {
+	if input > 0 {
+		return input
+	}
+	return 0
+}
+`))
+
+	report, err := Scan(context.Background(), root, Options{Complexity: ComplexityOptions{Enabled: true}})
+	require.NoError(t, err)
+	records, ok := metricValue(t, report.Metrics["complexity_analyzer"], "complexity_records").([]ComplexityRecord)
+	require.True(t, ok)
+	require.Len(t, records, 1)
+	assert.Equal(t, "/main.go", records[0].Path)
+	assert.Equal(t, "work", records[0].FunctionName)
+	assert.NotZero(t, records[0].CyclomaticComplexity)
+
+	encoded, err := json.Marshal(records[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "user_id")
+	assert.NotContains(t, string(encoded), "repository_id")
+	assert.NotContains(t, string(encoded), "analysis_run_id")
 }
 
 func TestFullScanDoesNotFollowSymlinks(t *testing.T) {
