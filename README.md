@@ -180,6 +180,7 @@ Read our [Contributing Guide](CONTRIBUTING.md) to get started.
 ### Quick Links
 * 📖 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 * 🔨 [Build Guide](BUILD.md) - Build system and release process
+* 📦 [Versioning and Releases](docs/versioning.md) - SemVer policy and the test-gated maintainer workflow
 * 📋 [Issues](https://github.com/endrilickollari/debtdrone-cli/issues) - Report bugs or request features
 
 <div align="center">

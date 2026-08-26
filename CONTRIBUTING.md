@@ -193,23 +193,14 @@ Only maintainers can create releases.
 
 ### Creating a Release
 
-1. **Test everything**
-   ```bash
-   make test
-   make snapshot
-   ```
+Releases are test-gated and created through the manually dispatched **Release**
+GitHub Actions workflow. Do not create or push release tags directly. Select a
+Semantic Version according to [the versioning policy](docs/versioning.md), run
+the workflow from `main`, and monitor it through publication and the SaaS
+dependency-update dispatch.
 
-2. **Create and push tag**
-   ```bash
-   git tag -a v0.2.0 -m "Release v0.2.0"
-   git push origin v0.2.0
-   ```
+After publication, test installation:
 
-3. **Monitor GitHub Actions**
-   - Check workflow completion
-   - Verify artifacts in Release
-
-4. **Test installation**
    ```bash
    curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/install.sh | bash
    debtdrone --version

@@ -1,31 +1,152 @@
 name: Release
 
+run-name: Release ${{ inputs.version }}
+
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version to release (for example v2.1.0)"
+        required: true
+        type: string
+      retry_failed_publication:
+        description: "Reuse an existing matching tag after a failed publication"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: scanner-release-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
-  test:
+  validate:
+    name: Validate release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release_sha: ${{ steps.release.outputs.sha }}
+      tag_exists: ${{ steps.release.outputs.tag_exists }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.1'
-      - run: go test -v ./...
-
-  goreleaser:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.1"
+          cache: true
+
+      - name: Validate version
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RETRY_FAILED_PUBLICATION: ${{ inputs.retry_failed_publication }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          core='(0|[1-9][0-9]*)'
+          identifier='((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
+          if [[ ! "$VERSION" =~ ^v2\.${core}\.${core}(-${identifier}(\.${identifier})*)?$ ]]; then
+            echo "Version must be valid v2 SemVer, for example v2.1.0 or v2.1.0-rc.1" >&2
+            exit 1
+          fi
+
+          tag_exists=false
+          if git rev-parse --verify --quiet "refs/tags/$VERSION"; then
+            if [[ "$RETRY_FAILED_PUBLICATION" != "true" ]]; then
+              echo "Tag $VERSION already exists; enable retry_failed_publication only to recover a failed publication" >&2
+              exit 1
+            fi
+
+            tag_sha=$(git rev-list -n 1 "$VERSION")
+            git checkout --detach "$VERSION"
+            release_sha=$(git rev-parse HEAD)
+            if [[ "$tag_sha" != "$release_sha" ]]; then
+              echo "Could not resolve tag $VERSION to its commit" >&2
+              exit 1
+            fi
+            if gh release view "$VERSION" >/dev/null 2>&1; then
+              echo "::warning::GitHub release $VERSION already exists and will be replaced during this explicit retry"
+            fi
+            tag_exists=true
+          else
+            if [[ "$RETRY_FAILED_PUBLICATION" == "true" ]]; then
+              echo "Cannot retry publication because tag $VERSION does not exist" >&2
+              exit 1
+            fi
+            release_sha=$(git rev-parse HEAD)
+          fi
+
+          echo "sha=$release_sha" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=$tag_exists" >> "$GITHUB_OUTPUT"
+
+      - name: Test scanner
+        run: |
+          go test ./...
+          go vet ./...
+          go build -o "$RUNNER_TEMP/debtdrone" ./cmd/debtdrone
+
+      - name: Validate release artifacts
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/code" \
+            -w /code \
+            --entrypoint /bin/sh \
+            ghcr.io/goreleaser/goreleaser-cross:v1.23.2@sha256:766340b908ec85bab01a5abf2199d600136b446cb532ddff9b52bef8a0ed9610 \
+            -c "git config --global --add safe.directory /code && goreleaser release --snapshot --clean"
+
+  tag:
+    name: Create release tag
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Create and push annotated tag
+        if: needs.validate.outputs.tag_exists != 'true'
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" "$RELEASE_SHA" -m "Release $VERSION"
+          git push origin "refs/tags/$VERSION"
+
+      - name: Reuse validated release tag
+        if: needs.validate.outputs.tag_exists == 'true'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "Reusing $VERSION after an explicitly requested publication retry"
+
+  publish:
+    name: Publish release
+    needs: tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -34,12 +155,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run GoReleaser (Cross-Compile)
+      - name: Run GoReleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           docker run --rm \
-            -v $PWD:/code \
+            -v "$GITHUB_WORKSPACE:/code" \
             -w /code \
-            -e GITHUB_TOKEN=${{ secrets.GH_PAT }} \
+            -e GITHUB_TOKEN \
             --entrypoint /bin/sh \
-            ghcr.io/goreleaser/goreleaser-cross:v1.23.2 \
+            ghcr.io/goreleaser/goreleaser-cross:v1.23.2@sha256:766340b908ec85bab01a5abf2199d600136b446cb532ddff9b52bef8a0ed9610 \
             -c "git config --global --add safe.directory /code && goreleaser release --clean"
+
+  notify-saas:
+    name: Request SaaS dependency update
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch released version
+        env:
+          GH_TOKEN: ${{ secrets.DEBTDRONE_AUTOMATION_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "DEBTDRONE_AUTOMATION_TOKEN is required to notify the SaaS repository" >&2
+            exit 1
+          fi
+          jq -n --arg version "$VERSION" '{
+            event_type: "debtdrone-cli-released",
+            client_payload: {version: $version}
+          }' | gh api --method POST repos/endrilickollari/debtdrone/dispatches --input -
