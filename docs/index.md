@@ -82,5 +82,6 @@ debtdrone scan ./src --fail-on=high
 | [Interactive TUI Explorer](tui-usage.md) | Full guide to the terminal UI and its commands |
 | [CI/CD & Headless CLI](headless-usage.md) | `scan`, `history`, and Quality Gates for pipelines |
 | [Coverage execution for Go consumers](scanner-coverage.md) | Artifact parsing and optional isolated test execution |
+| [Scanner ownership](ownership.md) | Contribution boundary between the public scanner and SaaS |
 | [Configuration Management](configuration.md) | `.debtdrone.yaml`, `debtdrone init`, and `config set` |
 | [System Architecture](architecture.md) | Hexagonal design and the Bubble Tea router pattern |
