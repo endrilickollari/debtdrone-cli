@@ -6,7 +6,7 @@ Thank you for your interest in contributing to DebtDrone CLI! This guide will he
 
 ### Prerequisites
 
-- **Go 1.21+** - [Download](https://go.dev/dl/)
+- **Go 1.25.1+** - [Download](https://go.dev/dl/)
 - **Docker** - [Install](https://docs.docker.com/get-docker/)
 - **Make** - Usually pre-installed on macOS/Linux
 
@@ -47,10 +47,10 @@ make snapshot
 make test
 
 # Run specific package tests
-go test ./internal/analyzer/...
+go test ./scanner/... ./internal/analysis/...
 
 # Run with coverage
-go test -cover ./internal/...
+go test -cover ./...
 ```
 
 ### Cleaning
@@ -102,27 +102,25 @@ Have an idea? We'd love to hear it!
 
 ## 📝 Code Contributions
 
-**Note**: The source code is maintained in a private repository. This public repository is for:
-- Bug reports
-- Feature requests
-- Documentation improvements
-- Installation script fixes
-
 ### What You Can Contribute
 
-✅ **Documentation**: README, BUILD.md, this file
-✅ **Installation Script**: `install.sh` improvements
-✅ **Build Configuration**: `.goreleaser.yaml`, Makefile, GitHub Actions
-✅ **Examples**: Usage examples, CI/CD integrations
+DebtDrone CLI and its reusable scanner are open source. Contributions may
+include scanner behavior, analyzers, the CLI/TUI, tests, documentation,
+installation, and release tooling.
 
-❌ **Source Code**: CLI implementation is closed-source
+Reusable analysis changes belong in this repository. Hosted product behavior
+such as workers, persistence, organizations, billing, Jira, Trello, GitHub,
+notifications, AI, and the web UI belongs in the separate SaaS repository and
+must not be added to the public scanner. Read
+[`docs/ownership.md`](docs/ownership.md) before making a cross-repository
+change.
 
 ### Pull Request Process
 
 1. **Fork the repository**
 2. **Create a feature branch**: `git checkout -b fix/install-script`
 3. **Make your changes**
-4. **Test thoroughly**
+4. **Run `go test ./...` and `go vet ./...`**
 5. **Commit with clear messages**: `fix: Handle missing /usr/local/bin directory`
 6. **Push and open a PR**
 
