@@ -13,6 +13,7 @@ import (
 type ScanOptions struct {
 	MaxComplexity int
 	SecurityScan  bool
+	Coverage      bool
 }
 
 type ScanProgress struct {
@@ -21,9 +22,18 @@ type ScanProgress struct {
 	Total        int
 }
 
-type ScanService struct{}
+type ScanResult struct {
+	Issues   []models.TechnicalDebtIssue
+	Warnings []scanner.Warning
+}
 
-func NewScanService() *ScanService { return &ScanService{} }
+type scanFunc func(context.Context, string, scanner.Options) (scanner.Report, error)
+
+type ScanService struct {
+	scan scanFunc
+}
+
+func NewScanService() *ScanService { return &ScanService{scan: scanner.Scan} }
 
 func IsPartialFailure(err error) bool {
 	var partial *scanner.PartialFailureError
@@ -31,10 +41,20 @@ func IsPartialFailure(err error) bool {
 }
 
 func (s *ScanService) Run(ctx context.Context, path string, opts ScanOptions, onProgress func(ScanProgress)) ([]models.TechnicalDebtIssue, error) {
-	report, scanErr := scanner.Scan(ctx, path, scanner.Options{
+	result, err := s.RunDetailed(ctx, path, opts, onProgress)
+	return result.Issues, err
+}
+
+func (s *ScanService) RunDetailed(ctx context.Context, path string, opts ScanOptions, onProgress func(ScanProgress)) (ScanResult, error) {
+	scan := s.scan
+	if scan == nil {
+		scan = scanner.Scan
+	}
+	report, scanErr := scan(ctx, path, scanner.Options{
 		Scope:      scanner.FullScan(),
 		Complexity: scanner.ComplexityOptions{Enabled: true, MaxCyclomatic: opts.MaxComplexity},
 		Security:   scanner.SecurityOptions{Enabled: opts.SecurityScan},
+		Coverage:   scanner.CoverageOptions{Enabled: opts.Coverage},
 		OnProgress: func(event scanner.ProgressEvent) {
 			if onProgress != nil && event.Phase == scanner.ProgressStarted {
 				onProgress(ScanProgress{AnalyzerName: event.AnalyzerName, Index: event.Index, Total: event.Total})
@@ -72,5 +92,5 @@ func (s *ScanService) Run(ctx context.Context, path string, opts ScanOptions, on
 		})
 	}
 
-	return issues, scanErr
+	return ScanResult{Issues: issues, Warnings: report.Warnings}, scanErr
 }

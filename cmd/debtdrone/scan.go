@@ -20,6 +20,7 @@ func newScanCmd() *cobra.Command {
 		failOn        string
 		maxComplexity int
 		securityScan  bool
+		coverage      bool
 	)
 
 	cmd := &cobra.Command{
@@ -43,9 +44,14 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 			opts := service.ScanOptions{
 				MaxComplexity: maxComplexity,
 				SecurityScan:  securityScan,
+				Coverage:      coverage,
 			}
 
-			issues, scanErr := svc.Run(ctx, absPath, opts, nil)
+			result, scanErr := svc.RunDetailed(ctx, absPath, opts, nil)
+			for _, warning := range result.Warnings {
+				cmd.PrintErrf("warning [%s]: %s\n", warning.AnalyzerID, warning.Message)
+			}
+			issues := result.Issues
 			if scanErr != nil && !service.IsPartialFailure(scanErr) {
 				return fmt.Errorf("scan failed: %w", scanErr)
 			}
@@ -98,6 +104,7 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "Fail the build if issues with this severity or higher are found (critical, high, medium, low)")
 	cmd.Flags().IntVar(&maxComplexity, "max-complexity", 15, "Cyclomatic complexity threshold per function")
 	cmd.Flags().BoolVar(&securityScan, "security-scan", true, "Enable security vulnerability scanning")
+	cmd.Flags().BoolVar(&coverage, "coverage", false, "Parse existing coverage artifacts without running repository tests")
 
 	return cmd
 }

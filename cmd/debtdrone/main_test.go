@@ -19,6 +19,17 @@ func executeCommand(root *cobra.Command, args ...string) (output string, err err
 	return buf.String(), err
 }
 
+func executeCommandWithStreams(root *cobra.Command, args ...string) (stdout string, stderr string, err error) {
+	stdoutBuffer := new(bytes.Buffer)
+	stderrBuffer := new(bytes.Buffer)
+	root.SetOut(stdoutBuffer)
+	root.SetErr(stderrBuffer)
+	root.SetArgs(args)
+
+	err = root.Execute()
+	return stdoutBuffer.String(), stderrBuffer.String(), err
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 	os.Exit(code)
