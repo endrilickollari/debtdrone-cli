@@ -48,8 +48,9 @@ func TestPublicScannerDependencyBoundary(t *testing.T) {
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
 
-	dependencies := string(output)
-	for _, forbidden := range []string{
+	dependencies := strings.Fields(string(output))
+	for _, forbiddenModule := range []string{
+		"github.com/endrilickollari/debtdrone",
 		"github.com/endrilickollari/debtdrone-cli/v2/internal/store",
 		"github.com/endrilickollari/debtdrone-cli/v2/internal/service",
 		"github.com/endrilickollari/debtdrone-cli/v2/internal/tui",
@@ -57,6 +58,47 @@ func TestPublicScannerDependencyBoundary(t *testing.T) {
 		"github.com/redis",
 		"charm.land",
 	} {
-		assert.False(t, strings.Contains(dependencies, forbidden), "scanner depends on forbidden package %q", forbidden)
+		for _, dependency := range dependencies {
+			assert.False(t, packageBelongsToModule(dependency, forbiddenModule),
+				"scanner dependency %q belongs to forbidden module %q", dependency, forbiddenModule)
+		}
 	}
+}
+
+func TestPackageBelongsToModuleDistinguishesSaaSFromCLI(t *testing.T) {
+	tests := []struct {
+		name       string
+		dependency string
+		module     string
+		want       bool
+	}{
+		{
+			name:       "module root",
+			dependency: "github.com/endrilickollari/debtdrone",
+			module:     "github.com/endrilickollari/debtdrone",
+			want:       true,
+		},
+		{
+			name:       "module package",
+			dependency: "github.com/endrilickollari/debtdrone/backend/internal/analysis",
+			module:     "github.com/endrilickollari/debtdrone",
+			want:       true,
+		},
+		{
+			name:       "similarly named CLI module",
+			dependency: "github.com/endrilickollari/debtdrone-cli/v2/scanner",
+			module:     "github.com/endrilickollari/debtdrone",
+			want:       false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, packageBelongsToModule(test.dependency, test.module))
+		})
+	}
+}
+
+func packageBelongsToModule(packagePath, modulePath string) bool {
+	return packagePath == modulePath || strings.HasPrefix(packagePath, modulePath+"/")
 }
