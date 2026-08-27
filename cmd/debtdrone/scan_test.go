@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,7 +98,7 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 
 	t.Run("--format=json", func(t *testing.T) {
 		root := createRootWithScan()
-		output, err := executeCommand(root, "scan", testRepo, "--format", "json")
+		output, _, err := executeCommandWithStreams(root, "scan", testRepo, "--format", "json")
 
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
@@ -131,4 +132,71 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 			t.Errorf("Text output should contain found issues. Got:\n%s", output)
 		}
 	})
+}
+
+func TestScanCmd_CoverageArtifactsAreOptIn(t *testing.T) {
+	testRepo := setupTestRepo(t)
+	coverageXML := `<coverage><packages><package><classes><class filename="complex.py"><lines><line number="2" hits="0"/></lines></class></classes></package></packages></coverage>`
+	require.NoError(t, os.WriteFile(filepath.Join(testRepo, "coverage.xml"), []byte(coverageXML), 0o600))
+
+	tests := []struct {
+		name         string
+		enable       bool
+		wantCoverage bool
+	}{
+		{name: "disabled by default", enable: false, wantCoverage: false},
+		{name: "parses an existing artifact when enabled", enable: true, wantCoverage: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := createRootWithScan()
+			args := []string{"scan", testRepo, "--format", "json", "--security-scan=false"}
+			if test.enable {
+				args = append(args, "--coverage")
+			}
+
+			output, _, err := executeCommandWithStreams(root, args...)
+			require.NoError(t, err)
+
+			var issues []models.TechnicalDebtIssue
+			require.NoError(t, json.Unmarshal([]byte(output), &issues))
+			hasCoverage := false
+			for _, issue := range issues {
+				if issue.ToolName == "coverage_analyzer" {
+					hasCoverage = true
+					assert.Equal(t, "test-coverage", issue.IssueType)
+					assert.Equal(t, "medium", issue.Severity)
+				}
+			}
+			assert.Equal(t, test.wantCoverage, hasCoverage)
+		})
+	}
+}
+
+func TestScanCmd_CoverageWarningsUseStderr(t *testing.T) {
+	tests := []struct {
+		name        string
+		artifact    string
+		wantWarning string
+	}{
+		{name: "missing artifact", wantWarning: "no supported coverage artifact was found"},
+		{name: "malformed artifact", artifact: `<coverage`, wantWarning: "parse coverage artifact"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testRepo := setupTestRepo(t)
+			if test.artifact != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(testRepo, "coverage.xml"), []byte(test.artifact), 0o600))
+			}
+
+			root := createRootWithScan()
+			stdout, stderr, err := executeCommandWithStreams(root, "scan", testRepo, "--coverage", "--format", "json", "--security-scan=false")
+			require.NoError(t, err)
+			assert.True(t, json.Valid([]byte(stdout)), "coverage warnings must not contaminate JSON stdout: %s", stdout)
+			assert.Contains(t, stderr, "warning [coverage_analyzer]")
+			assert.Contains(t, stderr, test.wantWarning)
+		})
+	}
 }

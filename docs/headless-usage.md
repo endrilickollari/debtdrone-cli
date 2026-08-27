@@ -36,6 +36,22 @@ If `path` is omitted, the current directory (`.`) is used.
 | `--fail-on` | _(none)_ | Exit `1` if debt of this severity or higher is found: `critical`, `high`, `medium`, `low` |
 | `--max-complexity` | `15` | Cyclomatic complexity threshold for raising a finding |
 | `--security-scan` | `true` | Enable Trivy-based vulnerability and secrets scanning |
+| `--coverage` | `false` | Parse existing coverage artifacts without running repository tests |
+
+### Coverage Artifacts
+
+Coverage analysis is disabled by default. Enable it when the repository already
+contains a supported report:
+
+```bash
+debtdrone scan . --coverage --format=json
+```
+
+The command discovers standard Go coverage, LCOV, Cobertura, JaCoCo, Clover,
+and SimpleCov artifacts. It only reads and parses existing report files; it
+does not invoke test runners, package managers, build tools, or Docker.
+Missing, unsupported, or malformed artifacts produce warnings on stderr while
+JSON findings remain valid on stdout.
 
 ### Text Output
 
