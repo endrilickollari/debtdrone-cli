@@ -1,4 +1,7 @@
-# Versioning and releases
+---
+title: Versioning and releases
+description: Follow DebtDrone CLI semantic-versioning and test-gated release policies.
+---
 
 DebtDrone CLI follows [Semantic Versioning](https://semver.org/) for the public
 `debtdrone-cli/v2` Go module, scanner report contract, command-line interface,

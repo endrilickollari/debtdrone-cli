@@ -1,4 +1,7 @@
-# Coverage execution for Go consumers
+---
+title: Coverage execution for Go consumers
+description: Parse coverage artifacts or explicitly execute Go coverage in an isolated container.
+---
 
 Coverage parsing is part of the reusable scanner package, but executing a
 repository's tests is always explicit. A normal static scan does not inspect

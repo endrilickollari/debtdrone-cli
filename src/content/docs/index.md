@@ -1,4 +1,7 @@
-# Welcome to DebtDrone
+---
+title: Overview
+description: Scan technical debt locally and enforce quality gates in CI with one open-source scanner.
+---
 
 **DebtDrone** is a Technical Debt Analyzer for engineering teams that need both human insight and machine enforcement — in a single binary.
 
@@ -13,7 +16,9 @@ debtdrone                        # Launch the interactive TUI — for humans
 debtdrone scan ./src --fail-on=high  # Headless quality gate — for machines
 ```
 
-The same analysis engine powers both modes. There is no feature disparity.
+The same analysis engine powers interactive and headless scans. Supporting
+commands differ between the two interfaces; the guides below call out those
+differences explicitly.
 
 ### Interactive Mode — for Humans
 
@@ -21,7 +26,11 @@ Launch `debtdrone` with no arguments and you enter a full-screen **Terminal UI**
 
 ### Headless Mode — for Machines
 
-Every action available in the TUI is also exposed as a [Cobra](https://github.com/spf13/cobra) subcommand: `scan`, `init`, `config`, and `history`. The `scan` command emits structured JSON, integrates with GitHub Actions, and supports a **Quality Gate** (`--fail-on`) that exits non-zero when debt above a chosen severity threshold is detected. Zero configuration is needed beyond a single YAML file committed alongside your code.
+The headless [Cobra](https://github.com/spf13/cobra) interface exposes `scan`,
+`init`, `config`, and `history`. The `scan` command emits a JSON array,
+integrates with GitHub Actions, and supports a **Quality Gate** (`--fail-on`)
+that exits non-zero when debt reaches a chosen severity threshold. Configure
+current scans with flags; the generated YAML file is not loaded yet.
 
 ---
 
@@ -48,10 +57,10 @@ Every finding is assigned a severity of **critical**, **high**, **medium**, or *
 - **14-language support** via tree-sitter syntax analysis
 - **Security scanning** powered by Trivy (CVEs + secrets detection)
 - **Quality Gates** — block merges when debt exceeds your threshold
-- **Scan history** — track trends across multiple runs
+- **Session scan history** — revisit runs completed before the TUI exits
 - **Interactive TUI** with Vim keybindings and a master-detail layout
 - **Structured JSON output** for pipeline integration and reporting
-- **`debtdrone init`** generates a `.debtdrone.yaml` config file committed with your code
+- **`debtdrone init`** generates a preview `.debtdrone.yaml` template
 - **Built-in auto-updater** — the binary keeps itself current
 
 ---
@@ -69,8 +78,9 @@ debtdrone
 debtdrone scan ./src --fail-on=high
 ```
 
-!!! tip "New to the tool?"
-    Start with the [Interactive TUI Explorer](tui-usage.md) to get a feel for what DebtDrone surfaces. Once you understand the findings, move to [CI/CD & Headless CLI](headless-usage.md) to enforce those standards automatically.
+:::tip[New to the tool?]
+Start with the [Interactive TUI Explorer](./tui-usage/) to get a feel for what DebtDrone surfaces. Once you understand the findings, move to [CI/CD & Headless CLI](./headless-usage/) to enforce those standards automatically.
+:::
 
 ---
 
@@ -78,10 +88,10 @@ debtdrone scan ./src --fail-on=high
 
 | Section | Description |
 |---|---|
-| [Installation](installation.md) | Binary downloads, `go install`, and Homebrew |
-| [Interactive TUI Explorer](tui-usage.md) | Full guide to the terminal UI and its commands |
-| [CI/CD & Headless CLI](headless-usage.md) | `scan`, `history`, and Quality Gates for pipelines |
-| [Coverage execution for Go consumers](scanner-coverage.md) | Artifact parsing and optional isolated test execution |
-| [Scanner ownership](ownership.md) | Contribution boundary between the public scanner and SaaS |
-| [Configuration Management](configuration.md) | `.debtdrone.yaml`, `debtdrone init`, and `config set` |
-| [System Architecture](architecture.md) | Hexagonal design and the Bubble Tea router pattern |
+| [Installation](./installation/) | Binary downloads, `go install`, and Homebrew |
+| [Interactive TUI Explorer](./tui-usage/) | Full guide to the terminal UI and its commands |
+| [CI/CD & Headless CLI](./headless-usage/) | `scan`, `history`, and Quality Gates for pipelines |
+| [Coverage execution for Go consumers](./scanner-coverage/) | Artifact parsing and optional isolated test execution |
+| [Scanner ownership](./ownership/) | Contribution boundary between the public scanner and SaaS |
+| [Configuration](./configuration/) | Current flags and the status of `.debtdrone.yaml` support |
+| [System Architecture](./architecture/) | Hexagonal design and the Bubble Tea router pattern |
