@@ -1,4 +1,8 @@
-# 🚁 DebtDrone CLI
+<p align="center">
+  <img src="public/debtdrone-logo.svg" alt="DebtDrone icon" width="96" height="96">
+</p>
+
+# DebtDrone CLI
 
 ![Go Version](https://img.shields.io/github/go-mod/go-version/endrilickollari/debtdrone-cli)
 ![Build Status](https://img.shields.io/github/actions/workflow/status/endrilickollari/debtdrone-cli/ci.yml?branch=main)
@@ -18,7 +22,7 @@ Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically
 ### 🎨 The Interactive TUI (For Humans)
 Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
 * **Master-Detail Explorer:** Navigate hundreds of issues effortlessly without text truncation.
-* **Historical Tracking:** View past scans and track whether your debt is shrinking or growing over time.
+* **Session History:** Revisit scans completed during the current TUI session.
 * **Inline Configuration:** Modify thresholds and rules directly within the terminal—no need to touch Vim.
 * **Seamless Updates:** Built-in auto-updater with changelog modals (`/update`).
 
@@ -27,7 +31,7 @@ Built on [Cobra](https://github.com/spf13/cobra).
 * **CI/CD Quality Gates:** Fail your build pipelines automatically if new Critical or High debt is introduced using `--fail-on`.
 * **Structured Output:** Export results to standard Text tables or machine-readable JSON (`--format=json`).
 * **Deterministic Execution:** Bypasses all interactive prompts to ensure pipelines never hang.
-* **Config as Code:** Commit a `.debtdrone.yaml` to your repo to ensure local and pipeline scans share the exact same ruleset.
+* **Explicit Scan Controls:** Configure each run with flags such as `--fail-on`, `--max-complexity`, and `--security-scan`.
 
 ---
 
@@ -69,8 +73,8 @@ debtdrone
 Once inside the TUI, you can use standard Vim bindings (`j`/`k`) to navigate. Use the command bar to jump between modules:
 
 * `/scan` - Start a new technical debt scan on the current directory.
-* `/history` - View a list of previous scans and their severity breakdowns.
-* `/config` - Open the Settings App to adjust global or repository-specific thresholds.
+* `/history` - View scans completed during the current TUI session.
+* `/config` - Adjust session-only TUI scan settings.
 * `/update` - Check for new releases and install them in-place.
 
 ---
@@ -97,17 +101,21 @@ Prevent bad code from being merged by setting a severity threshold. If the scann
 debtdrone scan ./my-project --fail-on=high
 ```
 
-### Configuration Management
-Initialize a default `.debtdrone.yaml` in your repository:
+### Configuration
+Initialize a preview `.debtdrone.yaml` template in your repository:
 ```bash
 debtdrone init
 ```
 
-View or edit settings via the CLI:
+The current scanner does not load this file yet. Configure a headless scan with
+flags:
+
 ```bash
-debtdrone config list
-debtdrone config set thresholds.max_complexity 15
+debtdrone scan . --max-complexity=15 --fail-on=high
 ```
+
+`debtdrone config list` displays static defaults, and `config set` does not
+persist changes in the current release.
 
 ---
 
@@ -180,7 +188,7 @@ Read our [Contributing Guide](CONTRIBUTING.md) to get started.
 ### Quick Links
 * 📖 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 * 🔨 [Build Guide](BUILD.md) - Build system and release process
-* 📦 [Versioning and Releases](docs/versioning.md) - SemVer policy and the test-gated maintainer workflow
+* 📦 [Versioning and Releases](src/content/docs/versioning.md) - SemVer policy and the test-gated maintainer workflow
 * 📋 [Issues](https://github.com/endrilickollari/debtdrone-cli/issues) - Report bugs or request features
 
 <div align="center">

@@ -112,7 +112,7 @@ Reusable analysis changes belong in this repository. Hosted product behavior
 such as workers, persistence, organizations, billing, Jira, Trello, GitHub,
 notifications, AI, and the web UI belongs in the separate SaaS repository and
 must not be added to the public scanner. Read
-[`docs/ownership.md`](docs/ownership.md) before making a cross-repository
+[`src/content/docs/ownership.md`](src/content/docs/ownership.md) before making a cross-repository
 change.
 
 ### Pull Request Process
@@ -193,7 +193,7 @@ Only maintainers can create releases.
 
 Releases are test-gated and created through the manually dispatched **Release**
 GitHub Actions workflow. Do not create or push release tags directly. Select a
-Semantic Version according to [the versioning policy](docs/versioning.md), run
+Semantic Version according to [the versioning policy](src/content/docs/versioning.md), run
 the workflow from `main`, and monitor it through publication and the SaaS
 dependency-update dispatch.
 

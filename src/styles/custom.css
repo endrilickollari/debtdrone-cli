@@ -1,0 +1,236 @@
+:root,
+:root[data-theme='light'],
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* DebtDrone marketing palette. Keep these values aligned with the SaaS marketing theme. */
+  --dd-bg: #0c0b0e;
+  --dd-surface-1: #111013;
+  --dd-surface-2: #171619;
+  --dd-surface-3: #1e1d21;
+  --dd-foreground: #f7f6f8;
+  --dd-muted: #99969f;
+  --dd-lime: #c5f542;
+  --dd-lime-ink: #13210c;
+  --dd-hairline: rgb(255 255 255 / 8%);
+
+  --sl-color-white: var(--dd-foreground);
+  --sl-color-gray-1: #e9e8eb;
+  --sl-color-gray-2: #c5c2c9;
+  --sl-color-gray-3: var(--dd-muted);
+  --sl-color-gray-4: #6b6870;
+  --sl-color-gray-5: var(--dd-surface-3);
+  --sl-color-gray-6: var(--dd-surface-2);
+  --sl-color-gray-7: var(--dd-surface-1);
+  --sl-color-black: var(--dd-bg);
+  --sl-color-accent-low: rgb(197 245 66 / 13%);
+  --sl-color-accent: var(--dd-lime);
+  --sl-color-accent-high: var(--dd-lime);
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: var(--dd-lime);
+  --sl-color-text-invert: var(--dd-lime-ink);
+  --sl-color-bg: var(--dd-bg);
+  --sl-color-bg-nav: rgb(12 11 14 / 78%);
+  --sl-color-bg-sidebar: var(--dd-bg);
+  --sl-color-bg-inline-code: var(--dd-surface-2);
+  --sl-color-bg-accent: var(--dd-lime);
+  --sl-color-hairline-light: var(--dd-hairline);
+  --sl-color-hairline: var(--dd-hairline);
+  --sl-color-hairline-shade: var(--dd-hairline);
+
+  --sl-font: 'Geist Variable';
+  --sl-font-mono: 'Geist Mono Variable';
+  --sl-nav-height: 4rem;
+  --sl-sidebar-width: 17rem;
+  --sl-content-width: 48rem;
+  --sl-text-body: 0.9375rem;
+  --sl-line-height: 1.7;
+}
+
+html {
+  background: var(--dd-bg);
+  font-size: 14px;
+  font-feature-settings: 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  letter-spacing: -0.01em;
+}
+
+header.header {
+  border-bottom: 1px solid var(--dd-hairline);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.site-title {
+  gap: 0.625rem;
+  color: var(--dd-foreground);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.site-title img {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+}
+
+.sidebar-pane {
+  border-inline-end: 1px solid var(--dd-hairline);
+}
+
+#starlight__sidebar {
+  background: var(--dd-bg);
+}
+
+#starlight__sidebar a,
+#starlight__sidebar summary {
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+#starlight__sidebar a[aria-current='page'] {
+  background: rgb(197 245 66 / 10%);
+  color: var(--dd-lime);
+  font-weight: 500;
+}
+
+#starlight__sidebar .large {
+  color: var(--dd-muted);
+  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.main-frame {
+  position: relative;
+  isolation: isolate;
+}
+
+.main-frame::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto;
+  height: 28rem;
+  background-image:
+    linear-gradient(to right, rgb(247 246 248 / 4%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(247 246 248 / 4%) 1px, transparent 1px);
+  background-size: 56px 56px;
+  content: '';
+  mask-image: linear-gradient(to bottom, black, transparent 85%);
+}
+
+.content-panel {
+  border-color: var(--dd-hairline);
+}
+
+.content-panel:first-child {
+  padding-top: clamp(2.5rem, 6vw, 5rem);
+}
+
+.content-panel h1 {
+  max-width: 18ch;
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+}
+
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  color: var(--dd-foreground);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.sl-markdown-content h2 {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--dd-hairline);
+}
+
+.sl-markdown-content a:not(.not-content *) {
+  text-decoration-color: rgb(197 245 66 / 45%);
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content code:not(:where(.expressive-code *)) {
+  border: 1px solid var(--dd-hairline);
+  border-radius: 0.25rem;
+  padding: 0.12rem 0.35rem;
+  color: var(--dd-lime);
+}
+
+.expressive-code .frame {
+  overflow: hidden;
+  border: 1px solid var(--dd-hairline);
+  border-radius: 0.625rem;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 22%);
+}
+
+.expressive-code .frame .header,
+.expressive-code .frame pre {
+  background: var(--dd-surface-1);
+}
+
+.starlight-aside {
+  border-radius: 0.625rem;
+  border-inline-start-width: 2px;
+  background: var(--dd-surface-1);
+}
+
+.pagination-links a {
+  border-color: var(--dd-hairline);
+  border-radius: 0.625rem;
+  background: var(--dd-surface-1);
+  box-shadow: none;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.pagination-links a:hover {
+  border-color: rgb(197 245 66 / 40%);
+  background: var(--dd-surface-2);
+  transform: translateY(-1px);
+}
+
+.pagination-links .link-title {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+site-search button,
+.social-icons a,
+starlight-menu-button button {
+  border-radius: 0.375rem;
+}
+
+site-search button {
+  border-color: var(--dd-hairline);
+  background: var(--dd-surface-1);
+}
+
+::selection {
+  background: var(--dd-lime);
+  color: var(--dd-lime-ink);
+}
+
+@media (max-width: 49.99rem) {
+  .content-panel:first-child {
+    padding-top: 2rem;
+  }
+
+  .content-panel h1 {
+    font-size: 2.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pagination-links a {
+    transition: none;
+  }
+}

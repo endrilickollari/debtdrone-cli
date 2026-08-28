@@ -1,11 +1,14 @@
-# System architecture
+---
+title: System architecture
+description: Understand the reusable scanner boundary shared by the CLI, TUI, and DebtDrone SaaS.
+---
 
 DebtDrone CLI has two consumers of one reusable scanner: the local CLI/TUI and
 the DebtDrone SaaS. The public `scanner` packages are the stable boundary; the
 `internal` packages are implementation details and cannot be imported by other
 Go modules.
 
-Read [Scanner ownership and contribution boundary](ownership.md) before making
+Read [Scanner ownership and contribution boundary](../ownership/) before making
 a change that also affects the SaaS.
 
 ## Dependency direction

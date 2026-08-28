@@ -1,4 +1,7 @@
-# Scanner ownership and contribution boundary
+---
+title: Scanner ownership and contribution boundary
+description: Decide whether scanner, CLI, TUI, or hosted product behavior belongs in this repository.
+---
 
 This repository owns the open-source DebtDrone CLI and the reusable scanning
 engine consumed by the paid SaaS product. The public Go module is
@@ -31,7 +34,7 @@ introduced into this module.
 3. Merge without creating a release unless a maintainer explicitly approves a
    version.
 4. Publish through the test-gated Release workflow described in
-   [Versioning and releases](versioning.md).
+   [Versioning and releases](../versioning/).
 5. Let release automation open a SaaS dependency-update pull request for the
    exact immutable version.
 6. Put only adaptation, persistence, and hosted product behavior in that SaaS

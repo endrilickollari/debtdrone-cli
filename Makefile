@@ -1,7 +1,8 @@
-.PHONY: all build test clean snapshot help
+.PHONY: all build test clean snapshot help docs-install docs-build docs-serve
 
 BINARY_NAME=debtdrone
 DIST_DIR=dist
+DOCS_DIST_DIR=docs-dist
 CLI_PATH=./cmd/debtdrone
 
 help:
@@ -11,6 +12,8 @@ help:
 	@echo "  make test       - Run all tests"
 	@echo "  make clean      - Remove build artifacts"
 	@echo "  make snapshot   - Create a snapshot release (no push)"
+	@echo "  make docs-build - Build the Starlight documentation site"
+	@echo "  make docs-serve - Preview documentation locally"
 	@echo ""
 
 all: clean test build
@@ -25,9 +28,18 @@ test:
 	@go test ./internal/...
 	@echo "✅ Tests completed"
 
+docs-install:
+	@npm ci
+
+docs-build: docs-install
+	@npm run build
+
+docs-serve: docs-install
+	@npm run dev
+
 clean:
 	@echo "🧹 Cleaning build artifacts..."
-	@rm -rf $(DIST_DIR)
+	@rm -rf $(DIST_DIR) $(DOCS_DIST_DIR)
 	@echo "✅ Clean complete"
 
 snapshot:

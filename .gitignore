@@ -3,7 +3,10 @@
 
 # Build artifacts
 dist/
+docs-dist/
 bin/
+node_modules/
+.astro/
 *.tar.gz
 *.zip
 

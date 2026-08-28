@@ -1,4 +1,7 @@
-# Installation
+---
+title: Installation
+description: Install the DebtDrone CLI on macOS, Linux, or Windows.
+---
 
 DebtDrone ships as a single static binary with no runtime dependencies. Choose the method that best fits your workflow.
 
@@ -40,8 +43,9 @@ Pre-compiled static binaries are published to the [GitHub Releases](https://gith
 | Linux | arm64 | `debtdrone_Linux_arm64.tar.gz` |
 | Windows | x86_64 | `debtdrone_Windows_x86_64.zip` |
 
-!!! note "Windows ARM64"
-    Windows ARM64 is not currently supported in the pre-compiled release artifacts. Windows ARM64 users should build from source (see below).
+:::note[Windows ARM64]
+Windows ARM64 is not currently supported in the pre-compiled release artifacts. Windows ARM64 users should build from source (see below).
+:::
 
 ### macOS / Linux
 
@@ -96,15 +100,19 @@ go build -o debtdrone ./cmd/debtdrone
 sudo mv debtdrone /usr/local/bin/
 ```
 
-!!! note "CGO requirement"
-    The analysis engine uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) for multi-language syntax parsing, which requires CGO. Ensure a C compiler (`gcc` or `clang`) is present on your system before building from source.
+:::note[CGO requirement]
+The analysis engine uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) for multi-language syntax parsing, which requires CGO. Ensure a C compiler (`gcc` or `clang`) is present on your system before building from source.
+:::
 
 ---
 
 ## Built-in Auto-Updater
 
-!!! tip "Install once, stay current automatically"
-    DebtDrone ships with a built-in self-updater. Once installed by any of the methods above, you never need to manually upgrade again. Use the `/update` command in the TUI, or run `debtdrone update` from the command line to check for a new release, view the changelog, and apply the update in-place — no package manager required.
+:::tip[Install once, stay current automatically]
+DebtDrone ships with a built-in self-updater. Launch the TUI and use `/update`
+to check for a release, review its notes, and apply it in place. There is no
+headless `debtdrone update` subcommand in the current release.
+:::
 
 ---
 
