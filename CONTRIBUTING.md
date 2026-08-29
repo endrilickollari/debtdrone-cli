@@ -200,11 +200,40 @@ dependency-update dispatch.
 After publication, test installation:
 
    ```bash
-   curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/install.sh | bash
+   curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
    debtdrone --version
    ```
 
 ## 📖 Documentation
+
+The public documentation site is built with Astro Starlight from
+`src/content/docs`.
+
+```bash
+# Install the locked documentation dependencies
+npm ci
+
+# Start the local development server
+npm run dev
+
+# Verify the production build used by CI
+npm run build
+```
+
+Use `src/assets` for images imported by documentation pages and `public` for
+files that must retain a stable public path. Update the sidebar and site
+metadata in `astro.config.mjs`.
+
+Validate command examples against the current executable help before opening a
+pull request:
+
+```bash
+go run ./cmd/debtdrone --help
+go run ./cmd/debtdrone scan --help
+```
+
+See the public [documentation contribution guide](src/content/docs/contributing.md)
+for the information architecture and the MkDocs-to-Starlight migration map.
 
 ### README.md
 

@@ -1,253 +1,149 @@
-# Build & Release Guide
+# Build and release guide
 
-This document explains how to build, test, and release DebtDrone CLI.
+This guide covers local development, release validation, and the maintainer-only
+release workflow for DebtDrone CLI v2.
 
 ## Prerequisites
 
-- **Go 1.21+** - For local development
-- **Docker** - For cross-platform builds (CGO support)
-- **Make** - For running build commands
+- Go 1.25.1 or later;
+- a C/C++ compiler for Tree-sitter's CGO dependencies;
+- Make for the repository shortcuts;
+- Docker only for cross-platform snapshot builds; and
+- Node.js 22.12 or later for the documentation site.
 
-## Architecture
+## Local development
 
-DebtDrone CLI uses **CGO** for Tree-sitter integration, which requires:
-
-- Native C/C++ compilation
-- Cross-compilation toolchains for different platforms
-- Docker-based builds for consistency
-
-## Quick Start
-
-### Local Development Build
+Build the CLI for the current platform:
 
 ```bash
 make build
-make test
-make clean
+./dist/debtdrone --version
 ```
 
-The binary will be created in `dist/debtdrone`.
+Run the complete Go test suite and static checks:
 
-### Test Cross-Platform Build
+```bash
+make test
+go vet ./...
+```
+
+`make test` runs `go test ./...`, including command, scanner API, and internal
+package tests. Use `make clean` to remove generated build and documentation
+artifacts.
+
+DebtDrone uses CGO for Tree-sitter parsing. A local `go build` or `go install`
+therefore needs a working native compiler, even though the installed CLI is a
+single executable.
+
+## Documentation
+
+Install the locked dependencies and build the production documentation site:
+
+```bash
+npm ci
+npm run build
+```
+
+Use `npm run dev` for a local development server. The generated production site
+is written to `docs-dist/`.
+
+## Cross-platform release validation
+
+GoReleaser builds Linux and macOS archives for AMD64 and ARM64, plus a Windows
+AMD64 archive. Because these builds require platform-specific CGO toolchains,
+the repository runs GoReleaser through its pinned cross-compilation container:
 
 ```bash
 make snapshot
 ls -la dist/
 ```
 
-This uses Docker to simulate the full CI/CD pipeline locally.
+This creates local snapshot artifacts only. It does not create a tag, publish a
+GitHub release, update Homebrew, or notify the SaaS repository.
 
-## Build System Components
+The archive names come from `.goreleaser.yaml` and must remain compatible with
+the installation scripts:
 
-### 1. GoReleaser (`.goreleaser.yaml`)
-
-Handles cross-platform compilation and release creation.
-
-**Key Configuration:**
-
-- **Entry Point**: `./cmd/debtdrone`
-- **Binary Name**: `debtdrone`
-- **CGO**: Enabled with platform-specific compilers
-- **Platforms**: Linux/Darwin × AMD64/ARM64
-- **Archive Format**: `debtdrone_Darwin_arm64.tar.gz`
-
-**Cross-Compilers:**
-
-- macOS AMD64: `o64-clang`
-- macOS ARM64: `oa64-clang`
-- Linux AMD64: `x86_64-linux-gnu-gcc`
-- Linux ARM64: `aarch64-linux-gnu-gcc`
-
-### 2. Makefile
-
-Provides convenient build commands:
-
-| Command          | Description                            |
-| ---------------- | -------------------------------------- |
-| `make build`     | Build locally (current platform only)  |
-| `make test`      | Run test suite                         |
-| `make clean`     | Remove build artifacts                 |
-| `make snapshot`  | Full cross-platform build (no release) |
-| `make install`   | Install binary to `/usr/local/bin`     |
-| `make uninstall` | Remove installed binary                |
-
-### 3. GitHub Actions (`.github/workflows/release.yml`)
-
-Automates releases when you push a version tag.
-
-**Trigger**: `git push origin v0.1.0`
-
-**Process:**
-
-1. Checkout code with full history
-2. Login to GitHub Container Registry
-3. Run GoReleaser in Docker
-4. Build binaries for all platforms
-5. Create GitHub Release
-6. Upload artifacts
-
-## Release Process
-
-### Step 1: Test Locally
-
-```bash
-git status
-make test
-make snapshot
-ls dist/
+```text
+debtdrone_Darwin_x86_64.tar.gz
+debtdrone_Darwin_arm64.tar.gz
+debtdrone_Linux_x86_64.tar.gz
+debtdrone_Linux_arm64.tar.gz
+debtdrone_Windows_x86_64.zip
+checksums.txt
 ```
 
-### Step 2: Create Version Tag
+## Maintainer release process
 
-```bash
-VERSION=v0.2.0
-git tag -a $VERSION -m "Release $VERSION"
-git push origin $VERSION
-```
+Releases are created only by the manually dispatched **Release** GitHub Actions
+workflow. Do not create, move, delete, or push release tags manually.
 
-### Step 3: Monitor GitHub Actions
+Before dispatching a release:
 
-1. Go to: https://github.com/endrilickollari/debtdrone-cli/actions
-2. Watch the "Release" workflow
-3. Wait for completion (~5-10 minutes)
+1. Confirm the intended changes are merged into `main` and required CI checks
+   are green.
+2. Choose a valid v2 semantic version, such as `v2.1.0` or `v2.1.0-rc.1`, using
+   the [versioning policy](src/content/docs/versioning.md).
+3. Run the **Release** workflow from `main` with that version.
+4. Monitor validation, tag creation, publication, and the SaaS dependency-update
+   dispatch.
 
-### Step 4: Verify Release
+The workflow validates the version, runs `go test ./...`, `go vet ./...`, a CLI
+build, and a GoReleaser snapshot before it creates an annotated tag. It then
+publishes GitHub and Homebrew artifacts from that immutable tag and requests a
+versioned scanner update in the SaaS repository.
 
-1. Go to: https://github.com/endrilickollari/debtdrone-cli/releases
-2. Check that all platform binaries are present:
-   - `debtdrone_Linux_x86_64.tar.gz`
-   - `debtdrone_Linux_arm64.tar.gz`
-   - `debtdrone_Darwin_x86_64.tar.gz`
-   - `debtdrone_Darwin_arm64.tar.gz`
-   - `checksums.txt`
-
-### Step 5: Test Installation
-
-```bash
-./installation_scripts/install.sh
-.\installation_scripts\install.ps1
-```
-
-### Step 5: Test Installation
+After publication, verify the release assets and test the public installer:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/endrilickollari/debtdrone-cli/main/installation_scripts/install.sh | bash
 debtdrone --version
 ```
 
-## Archive Naming Convention
+The reported version must match the released tag. Windows installation can be
+verified with `installation_scripts/install.ps1` in PowerShell.
 
-**Critical**: The installation script expects this exact format:
+## Failed releases and rollback
 
-```
-{ProjectName}_{OS}_{Arch}.tar.gz
-```
+- If validation fails before tag creation, fix the cause on a feature branch,
+  merge it through the normal pull-request process, and dispatch a new release.
+- If tag creation succeeded but publication failed, dispatch the same version
+  with `retry_failed_publication` enabled. The workflow verifies and reuses the
+  existing immutable tag.
+- If publication succeeded but the SaaS notification failed, keep the release
+  tag unchanged and run the SaaS **Scanner Dependency Update** workflow with the
+  published version.
+- If a published scanner has a defect, keep its tag immutable. Patch the issue
+  and publish a new patch version. The SaaS remains pinned until its scanner
+  dependency pull request passes and is merged, so it can stay on or return to
+  the last known-good version independently.
 
-Examples:
-
-- `debtdrone_Linux_x86_64.tar.gz`
-- `debtdrone_Darwin_arm64.tar.gz`
-
-The `.goreleaser.yaml` configuration ensures this format is maintained.
+See [Versioning and releases](src/content/docs/versioning.md) for version rules,
+required secrets, and retry semantics.
 
 ## Troubleshooting
 
-### Build Fails Locally
+### Local CGO build fails
+
+Confirm the Go version, compiler, and CGO setting:
 
 ```bash
 go version
-go mod tidy
-go mod download
-go build -o dist/debtdrone ./cmd/debtdrone
+go env CGO_ENABLED CC CXX
+go build ./cmd/debtdrone
 ```
 
-### Docker Build Fails
+Install Xcode Command Line Tools on macOS or the platform C/C++ build tools on
+Linux before retrying.
 
-```bash
-docker ps
-docker pull ghcr.io/goreleaser/goreleaser-cross:v1.23.2
-df -h
-```
+### Snapshot build fails
 
-### GitHub Action Fails
+Confirm Docker is running and that the pinned image in `Makefile` is available.
+The GitHub workflow is authoritative for release validation; do not change tags
+or bypass its checks to recover a local snapshot failure.
 
-**Common Issues:**
+### Installer cannot find an artifact
 
-1. **Missing GITHUB_TOKEN**: This is automatic, but check workflow permissions
-2. **CGO Errors**: Ensure `.goreleaser.yaml` has correct compiler paths
-3. **Tag Format**: Must match `v*` pattern (e.g., `v0.1.0`)
-
-**Debug:**
-
-```bash
-docker run --rm -v $PWD:/code -w /code \
-  ghcr.io/goreleaser/goreleaser-cross:v1.23.2 \
-  check
-```
-
-### Archive Name Mismatch
-
-If `install.sh` can't find binaries:
-
-1. Check GitHub Release assets
-2. Verify naming matches pattern
-3. Update `.goreleaser.yaml` if needed
-4. Re-run release
-
-## CGO and Tree-sitter
-
-Tree-sitter requires native compilation, which is why we use CGO.
-
-**Implications:**
-
-- Build times are longer (~5-10 min)
-- Must use Docker for cross-compilation
-- Cannot use `go install` directly
-- Binaries are platform-specific
-
-**Benefits:**
-
-- Zero false positives (true AST parsing)
-- Multi-language support
-- Fast runtime performance
-
-## Version Management
-
-We follow [Semantic Versioning](https://semver.org/):
-
-- `v0.1.0` - Initial release
-- `v0.2.0` - New features (minor)
-- `v0.2.1` - Bug fixes (patch)
-- `v1.0.0` - Stable API (major)
-
-## Pre-release Testing
-
-Before tagging a release:
-
-```bash
-make test
-make snapshot
-./dist/debtdrone_linux_amd64/debtdrone --version
-./dist/debtdrone_darwin_arm64/debtdrone --version
-./install.sh
-```
-
-## Rollback
-
-If a release has issues:
-
-```bash
-git tag -d v0.2.0
-git push origin :refs/tags/v0.2.0
-git tag -a v0.2.0 -m "Release v0.2.0 (fixed)"
-git push origin v0.2.0
-```
-
-## Support
-
-- **Build Issues**: Open issue on GitHub
-- **Private Repo Sync**: Internal documentation only
-
----
-
-**Last Updated**: 2025-12-05
+Compare the GitHub release asset names with `.goreleaser.yaml` and the platform
+mapping in `installation_scripts/install.sh` or `install.ps1`. Correct the build
+or installer in a new release; never replace a successfully published tag.

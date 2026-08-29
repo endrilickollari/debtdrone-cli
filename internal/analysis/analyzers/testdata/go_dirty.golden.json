@@ -53,7 +53,7 @@
       "issue_type": "complexity",
       "jira_sync_status": "",
       "line_number": 5,
-      "message": "Function 'ComplexFunction' has complexity issues",
+      "message": "Function 'ComplexFunction' has high cognitive complexity of 18 (threshold: 15)",
       "resolution_reason": null,
       "resolved_at": null,
       "resolved_by_user_id": null,
