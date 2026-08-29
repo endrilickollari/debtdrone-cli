@@ -7,6 +7,9 @@ Use `debtdrone scan` in CI/CD pipelines and scripted workflows. Findings are
 written to stdout, analyzer warnings are written to stderr, and a configured
 quality gate returns a non-zero exit when its threshold is reached.
 
+For a complete flag and subcommand inventory, use the
+[command reference](../command-reference/).
+
 ## Run a scan
 
 ```bash
@@ -19,7 +22,7 @@ The path defaults to the current directory.
 |---|---|---|
 | `--format` | `text` | Output `text` or `json` |
 | `--fail-on` | unset | Fail on `critical`, `high`, `medium`, or `low` findings |
-| `--max-complexity` | `15` | Set the cyclomatic-complexity threshold per function |
+| `--max-complexity` | `15` | Report high cyclomatic complexity above this value; critical starts above twice this value |
 | `--security-scan` | `true` | Enable Trivy vulnerability scanning |
 | `--coverage` | `false` | Parse existing coverage artifacts without running tests |
 
@@ -170,3 +173,5 @@ produce warnings on stderr.
   persistent record of prior CLI runs.
 
 See [Configuration](../configuration/) for the exact current limitations.
+For common pipeline and analyzer failures, see
+[Troubleshooting](../troubleshooting/).

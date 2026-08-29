@@ -5,6 +5,9 @@ description: Explore DebtDrone findings and workflows from the terminal interfac
 
 The DebtDrone TUI is a full-screen terminal application built with [Bubble Tea v2](https://github.com/charmbracelet/bubbletea) and styled with [Lipgloss](https://github.com/charmbracelet/lipgloss). It is designed for the exploratory half of the workflow: understanding a codebase, spotting trends across scan history, and adjusting analysis settings — all without leaving the terminal.
 
+This guide covers interactive slash commands. Headless commands and flags are
+listed separately in the [command reference](../command-reference/).
+
 ---
 
 ## Launching the TUI
@@ -21,7 +24,8 @@ The application opens to a centered **command bar** beneath the DebtDrone ASCII 
 *The TUI welcome screen. The command bar accepts slash-prefixed commands and offers tab-completion.*
 
 :::note[Directory context]
-The TUI targets the directory from which it is launched. Run it from your repository root for the most accurate results.
+`/scan` targets the directory from which the TUI was launched by default. You
+can provide another directory as `/scan <path>`.
 :::
 
 ---
@@ -35,13 +39,13 @@ DebtDrone uses familiar Vim-style keybindings throughout every view.
 | `j` / `↓` | Move selection down |
 | `k` / `↑` | Move selection up |
 | `Enter` | Confirm selection / drill into detail |
-| `Esc` | Go back to the previous view / cancel |
+| `Esc` / `q` | Return to the command bar from a completed child view |
 | `Tab` | Cycle through completions in the command bar |
-| `q` | Return to the command bar from a child view |
 | `Ctrl+C` | Exit the application from any view |
-| `?` | Toggle the help overlay |
 
-These bindings are consistent across all child views (scan results, history browser, config editor). There is no mode-switching; `Esc` always returns you to the previous context.
+Individual views add keys such as `g`/`G`, page navigation, and configuration
+editing. During an active scan, navigation keys are ignored; `Ctrl+C` exits the
+application rather than returning to the command bar.
 
 ---
 
@@ -53,7 +57,7 @@ Available commands:
 
 | Command | Description |
 |---|---|
-| `/scan` | Analyze the current directory for technical debt |
+| `/scan [path]` | Analyze the supplied directory, or the current directory when omitted |
 | `/history` | Browse scans completed in the current TUI session |
 | `/config` | Open the interactive settings editor |
 | `/update` | Check for a new DebtDrone release |
@@ -64,11 +68,14 @@ Available commands:
 
 ## `/scan` — Analyzing Your Codebase
 
-```
-/scan
+```text
+/scan [path]
 ```
 
-Pressing `Enter` on `/scan` triggers the analysis engine. The view transitions through two phases:
+Omit `path` to scan the directory from which DebtDrone was launched. After you
+type `/scan `, the command bar suggests matching directories and `Tab` accepts
+a suggestion. Pressing `Enter` triggers the analysis engine and transitions
+the view through two phases:
 
 ### Phase 1 — Scanning
 
@@ -144,7 +151,7 @@ change CLI or TUI behavior.
 | **General** | Output Format | `text` or `json` for TUI result presentation |
 | **General** | Auto-Update Checks | Placeholder; editing does not change startup checks |
 | **Quality Gate** | Fail on Severity | Placeholder; TUI scans do not enforce an exit threshold |
-| **Quality Gate** | Max Complexity | Cyclomatic complexity threshold per function (default: `15`) |
+| **Quality Gate** | Max Complexity | High cyclomatic complexity threshold per function; critical starts above twice the value (default: `15`) |
 | **Quality Gate** | Security Scan | Run Trivy vulnerability and secret detection |
 | **Display** | Show Line Numbers | Placeholder; editing does not change the results list |
 | **Display** | Max Results | Placeholder; editing does not cap rendered results |

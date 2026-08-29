@@ -67,3 +67,7 @@ Scanner changes land and are released here first. The SaaS then receives a
 reviewable dependency-only pull request and runs Linux, macOS, and Windows
 boundary tests before adoption. A SaaS rollback restores its previous
 application revision and scanner pin; it never switches to a copied engine.
+
+The planned local MCP server will be another adapter over this same public
+scanner boundary. See [MCP and agents](../mcp-and-agents/) for the current
+availability and safe agent workflow.

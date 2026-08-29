@@ -40,25 +40,40 @@ export default defineConfig({
       sidebar: [
         { label: 'Overview', slug: 'index' },
         {
-          label: 'Getting started',
+          label: 'Tutorials',
           items: [
-            { label: 'Installation', slug: 'installation' },
-            { label: 'Configuration', slug: 'configuration' },
+            { label: 'Run your first scan', slug: 'quickstart' },
           ],
         },
         {
-          label: 'User guides',
+          label: 'How-to guides',
           items: [
+            { label: 'Install the CLI', slug: 'installation' },
             { label: 'Interactive TUI', slug: 'tui-usage' },
-            { label: 'CI/CD and headless CLI', slug: 'headless-usage' },
-            { label: 'Coverage for Go consumers', slug: 'scanner-coverage' },
+            { label: 'Run scans in CI/CD', slug: 'headless-usage' },
+            { label: 'Configure scans', slug: 'configuration' },
+            { label: 'Troubleshooting', slug: 'troubleshooting' },
           ],
         },
         {
           label: 'Reference',
           items: [
+            { label: 'Command reference', slug: 'command-reference' },
+            { label: 'Coverage for Go consumers', slug: 'scanner-coverage' },
+          ],
+        },
+        {
+          label: 'Concepts',
+          items: [
             { label: 'System architecture', slug: 'architecture' },
             { label: 'Scanner ownership', slug: 'ownership' },
+            { label: 'MCP and agents', slug: 'mcp-and-agents' },
+          ],
+        },
+        {
+          label: 'Project',
+          items: [
+            { label: 'Contributing', slug: 'contributing' },
             { label: 'Versioning and releases', slug: 'versioning' },
           ],
         },

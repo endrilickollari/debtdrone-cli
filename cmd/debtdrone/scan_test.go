@@ -134,6 +134,64 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 	})
 }
 
+func TestScanCmd_MaxComplexityControlsComplexityFindings(t *testing.T) {
+	testRepo := t.TempDir()
+	content := `package example
+
+func classify(value int) int {
+	if value == 1 { return 1 }
+	if value == 2 { return 2 }
+	if value == 3 { return 3 }
+	if value == 4 { return 4 }
+	if value == 5 { return 5 }
+	if value == 6 { return 6 }
+	if value == 7 { return 7 }
+	if value == 8 { return 8 }
+	if value == 9 { return 9 }
+	if value == 10 { return 10 }
+	if value == 11 { return 11 }
+	return 0
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(testRepo, "complex.go"), []byte(content), 0o600))
+
+	complexityIssues := func(maxComplexity string) []models.TechnicalDebtIssue {
+		t.Helper()
+		root := createRootWithScan()
+		stdout, _, err := executeCommandWithStreams(
+			root,
+			"scan",
+			testRepo,
+			"--format", "json",
+			"--max-complexity", maxComplexity,
+			"--security-scan=false",
+		)
+		require.NoError(t, err)
+
+		var issues []models.TechnicalDebtIssue
+		require.NoError(t, json.Unmarshal([]byte(stdout), &issues))
+		var complexity []models.TechnicalDebtIssue
+		for _, issue := range issues {
+			if issue.ToolName == "complexity_analyzer" {
+				complexity = append(complexity, issue)
+			}
+		}
+		return complexity
+	}
+
+	lowThresholdIssues := complexityIssues("10")
+	require.Len(t, lowThresholdIssues, 1)
+	assert.Equal(t, "high", lowThresholdIssues[0].Severity)
+	assert.Contains(t, lowThresholdIssues[0].Message, "threshold: 10")
+
+	criticalThresholdIssues := complexityIssues("5")
+	require.Len(t, criticalThresholdIssues, 1)
+	assert.Equal(t, "critical", criticalThresholdIssues[0].Severity)
+	assert.Contains(t, criticalThresholdIssues[0].Message, "threshold: 10")
+
+	assert.Empty(t, complexityIssues("100"))
+}
+
 func TestScanCmd_CoverageArtifactsAreOptIn(t *testing.T) {
 	testRepo := setupTestRepo(t)
 	coverageXML := `<coverage><packages><package><classes><class filename="complex.py"><lines><line number="2" hits="0"/></lines></class></classes></package></packages></coverage>`

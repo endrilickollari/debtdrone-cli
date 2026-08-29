@@ -3,13 +3,13 @@ title: Installation
 description: Install the DebtDrone CLI on macOS, Linux, or Windows.
 ---
 
-DebtDrone ships as a single static binary with no runtime dependencies. Choose the method that best fits your workflow.
+DebtDrone ships as a single binary. Core local scanning needs no companion service; [Trivy](https://trivy.dev/) is required only when security scanning is enabled. Choose the installation method that best fits your workflow.
 
 ---
 
 ## Option 1 — `go install`
 
-If you have Go 1.25 or later on your `PATH`, this is the fastest path to a working installation:
+If you have Go 1.25.1 or later and a C compiler on your `PATH`, this is the fastest path to a working installation:
 
 ```bash
 go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
@@ -31,7 +31,7 @@ debtdrone --version
 
 ## Option 2 — Pre-compiled Binaries
 
-Pre-compiled static binaries are published to the [GitHub Releases](https://github.com/endrilickollari/debtdrone-cli/releases/latest) page for every tagged release. Download the archive for your platform, extract it, and place the binary somewhere on your `PATH`.
+Pre-compiled binaries are published to the [GitHub Releases](https://github.com/endrilickollari/debtdrone-cli/releases/latest) page for every tagged release. Download the archive for your platform, extract it, and place the binary somewhere on your `PATH`.
 
 ### Supported Platforms
 
@@ -129,3 +129,6 @@ debtdrone scan . --format=text
 ```
 
 If you see version output and a scan report, you are ready to go.
+
+Continue with [Run your first scan](../quickstart/). If installation or native
+compilation fails, use the [troubleshooting guide](../troubleshooting/).

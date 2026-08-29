@@ -24,7 +24,7 @@ debtdrone scan . \
 |---|---|---|
 | `--format` | `text` | Select `text` or `json` output |
 | `--fail-on` | unset | Return a non-zero exit when a finding reaches the selected severity |
-| `--max-complexity` | `15` | Set the cyclomatic-complexity threshold per function |
+| `--max-complexity` | `15` | Report high cyclomatic complexity above this value; critical starts above twice this value |
 | `--security-scan` | `true` | Enable the Trivy analyzer |
 | `--coverage` | `false` | Parse existing coverage artifacts without running tests |
 
@@ -102,3 +102,5 @@ or persist a file. Do not use it for automation yet.
 
 To change a headless scan today, pass the corresponding flag directly. For TUI
 behavior, see [Interactive TUI configuration](../tui-usage/#config--interactive-settings-editor).
+For the complete current command surface, see the
+[command reference](../command-reference/).

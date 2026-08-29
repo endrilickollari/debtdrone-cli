@@ -102,7 +102,7 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 
 	cmd.Flags().StringVarP(&format, "format", "f", "text", "Output format: text or json")
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "Fail the build if issues with this severity or higher are found (critical, high, medium, low)")
-	cmd.Flags().IntVar(&maxComplexity, "max-complexity", 15, "Cyclomatic complexity threshold per function")
+	cmd.Flags().IntVar(&maxComplexity, "max-complexity", 15, "High cyclomatic complexity threshold per function (critical above 2x)")
 	cmd.Flags().BoolVar(&securityScan, "security-scan", true, "Enable security vulnerability scanning")
 	cmd.Flags().BoolVar(&coverage, "coverage", false, "Parse existing coverage artifacts without running repository tests")
 

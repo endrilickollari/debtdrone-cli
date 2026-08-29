@@ -25,7 +25,7 @@ build:
 
 test:
 	@echo "🧪 Running tests..."
-	@go test ./internal/...
+	@go test ./...
 	@echo "✅ Tests completed"
 
 docs-install:

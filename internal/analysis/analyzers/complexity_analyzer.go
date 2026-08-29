@@ -18,18 +18,11 @@ import (
 )
 
 // ComplexityAnalyzer implements the Analyzer interface for complexity analysis
-type ComplexityAnalyzer struct {
-	factory *complexity.Factory
-}
+type ComplexityAnalyzer struct{}
 
 // NewComplexityAnalyzer creates a new complexity analyzer
 func NewComplexityAnalyzer() *ComplexityAnalyzer {
-	thresholds := models.DefaultComplexityThresholds()
-	factory := complexity.NewFactory(thresholds)
-
-	return &ComplexityAnalyzer{
-		factory: factory,
-	}
+	return &ComplexityAnalyzer{}
 }
 
 func (a *ComplexityAnalyzer) Name() string {
@@ -67,6 +60,8 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 	if !ok {
 		config = models.DefaultComplexityConfig()
 	}
+	thresholds := complexityThresholds(config)
+	factory := complexity.NewFactory(thresholds)
 
 	allMetrics := []models.ComplexityMetric{}
 
@@ -98,7 +93,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 			return nil
 		}
 
-		if !a.factory.IsSupported(path) {
+		if !factory.IsSupported(path) {
 			if ctx.Value("isCLI") != true {
 				log.Printf("🔍 Skipping %s - unsupported file type", relPath)
 			}
@@ -117,7 +112,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 			return nil
 		}
 
-		analyzer, err := a.factory.GetAnalyzer(path)
+		analyzer, err := factory.GetAnalyzer(path)
 		if err != nil {
 			return nil
 		}
@@ -180,7 +175,7 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 		allMetrics = filtered
 	}
 
-	issues := a.convertToIssues(allMetrics)
+	issues := a.convertToIssues(allMetrics, thresholds)
 	summary := a.calculateSummary(allMetrics)
 	summary["complexity_records"] = allMetrics
 
@@ -190,6 +185,22 @@ func (a *ComplexityAnalyzer) Analyze(ctx context.Context, repo *git.Repository) 
 	}, nil
 }
 
+func complexityThresholds(config models.ComplexityConfig) models.ComplexityThresholds {
+	thresholds := models.DefaultComplexityThresholds()
+	if config.CyclomaticThreshold <= 0 {
+		return thresholds
+	}
+
+	thresholds.CyclomaticHigh = config.CyclomaticThreshold
+	maxInt := int(^uint(0) >> 1)
+	if config.CyclomaticThreshold > maxInt/2 {
+		thresholds.CyclomaticCritical = maxInt
+	} else {
+		thresholds.CyclomaticCritical = config.CyclomaticThreshold * 2
+	}
+	return thresholds
+}
+
 func (a *ComplexityAnalyzer) CalculateDebt(complexity int, config models.ComplexityConfig) float64 {
 	if complexity <= config.CyclomaticThreshold {
 		return 0
@@ -197,7 +208,7 @@ func (a *ComplexityAnalyzer) CalculateDebt(complexity int, config models.Complex
 	return float64((complexity-config.CyclomaticThreshold)*config.CostPerPoint) / 60.0
 }
 
-func (a *ComplexityAnalyzer) convertToIssues(metrics []models.ComplexityMetric) []models.TechnicalDebtIssue {
+func (a *ComplexityAnalyzer) convertToIssues(metrics []models.ComplexityMetric, thresholds models.ComplexityThresholds) []models.TechnicalDebtIssue {
 	issues := []models.TechnicalDebtIssue{}
 
 	for _, metric := range metrics {
@@ -215,7 +226,7 @@ func (a *ComplexityAnalyzer) convertToIssues(metrics []models.ComplexityMetric) 
 			IssueType:          "complexity",
 			Severity:           metric.Severity,
 			Category:           "maintainability",
-			Message:            a.formatIssueMessage(metric),
+			Message:            a.formatIssueMessage(metric, thresholds),
 			Description:        a.formatIssueDescription(metric),
 			ToolName:           "complexity_analyzer",
 			ConfidenceScore:    1.0,
@@ -231,18 +242,34 @@ func (a *ComplexityAnalyzer) convertToIssues(metrics []models.ComplexityMetric) 
 	return issues
 }
 
-func (a *ComplexityAnalyzer) formatIssueMessage(metric models.ComplexityMetric) string {
-	if metric.CyclomaticComplexity > 20 {
-		return fmt.Sprintf("Function '%s' has critical cyclomatic complexity of %d (threshold: 20)",
-			metric.FunctionName, metric.CyclomaticComplexity)
+func (a *ComplexityAnalyzer) formatIssueMessage(metric models.ComplexityMetric, thresholds models.ComplexityThresholds) string {
+	if metric.CyclomaticComplexity > thresholds.CyclomaticCritical {
+		return fmt.Sprintf("Function '%s' has critical cyclomatic complexity of %d (threshold: %d)",
+			metric.FunctionName, metric.CyclomaticComplexity, thresholds.CyclomaticCritical)
 	}
-	if metric.CyclomaticComplexity > 10 {
-		return fmt.Sprintf("Function '%s' has high cyclomatic complexity of %d (threshold: 10)",
-			metric.FunctionName, metric.CyclomaticComplexity)
+	if metric.CognitiveComplexity != nil && *metric.CognitiveComplexity > thresholds.CognitiveCritical {
+		return fmt.Sprintf("Function '%s' has critical cognitive complexity of %d (threshold: %d)",
+			metric.FunctionName, *metric.CognitiveComplexity, thresholds.CognitiveCritical)
 	}
-	if metric.NestingDepth > 5 {
-		return fmt.Sprintf("Function '%s' has deep nesting depth of %d (threshold: 5)",
-			metric.FunctionName, metric.NestingDepth)
+	if metric.NestingDepth > thresholds.NestingCritical+1 {
+		return fmt.Sprintf("Function '%s' has critical nesting depth of %d (threshold: %d)",
+			metric.FunctionName, metric.NestingDepth, thresholds.NestingCritical+1)
+	}
+	if metric.CyclomaticComplexity > thresholds.CyclomaticHigh {
+		return fmt.Sprintf("Function '%s' has high cyclomatic complexity of %d (threshold: %d)",
+			metric.FunctionName, metric.CyclomaticComplexity, thresholds.CyclomaticHigh)
+	}
+	if metric.CognitiveComplexity != nil && *metric.CognitiveComplexity > thresholds.CognitiveHigh {
+		return fmt.Sprintf("Function '%s' has high cognitive complexity of %d (threshold: %d)",
+			metric.FunctionName, *metric.CognitiveComplexity, thresholds.CognitiveHigh)
+	}
+	if metric.NestingDepth > thresholds.NestingWarning+1 {
+		return fmt.Sprintf("Function '%s' has deep nesting depth of %d (threshold: %d)",
+			metric.FunctionName, metric.NestingDepth, thresholds.NestingWarning+1)
+	}
+	if metric.ParameterCount > thresholds.ParameterCritical {
+		return fmt.Sprintf("Function '%s' has a high parameter count of %d (threshold: %d)",
+			metric.FunctionName, metric.ParameterCount, thresholds.ParameterCritical)
 	}
 	return fmt.Sprintf("Function '%s' has complexity issues", metric.FunctionName)
 }
