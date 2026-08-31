@@ -92,14 +92,11 @@ DebtDrone analyzes 14 languages: Go, JavaScript, TypeScript (including JSX/TSX),
 
 Once scanning completes, the view expands into a full master-detail layout.
 
-- **Top pane (Master):** A scrollable list of all flagged files and functions, colour-coded by severity (`critical` in red, `high` in orange, `medium` in yellow, `low` in blue). Use `j`/`k` to navigate.
-- **Bottom pane (Detail):** The full breakdown for the selected item, including:
-    - All computed metrics (Cyclomatic Complexity, Cognitive Complexity, Nesting Depth, Parameters, LOC)
-    - Severity rating and estimated **debt in minutes** — a concrete number for sprint planning
-    - Actionable **Refactoring Suggestions** generated from the specific violation
+- **Top pane (Master):** A scrollable list of findings, colour-coded by severity (`critical` in red, `high` in orange, `medium` in yellow, `low` in blue). Use `j`/`k` to navigate.
+- **Bottom pane (Detail):** The selected finding's path and location, severity, category, type, analyzer, confidence, and message. Rule, debt, description, and source snippet fields appear when the analyzer provides them.
 
 ![Scan results master-detail view showing findings list and per-function metrics](../../assets/scan_result.png)
-*The results view. The top pane lists every finding by severity; the bottom pane shows the full metric breakdown and refactoring suggestions for the selected function.*
+*The results view. The top pane lists findings by severity; the bottom pane shows the analyzer metadata and threshold-aware message for the selected finding.*
 
 Press `Esc` to return to the command bar. Completed results are added to the
 current TUI session's history and are discarded when DebtDrone exits.

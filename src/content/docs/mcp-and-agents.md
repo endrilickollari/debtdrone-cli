@@ -8,12 +8,15 @@ current CLI release does **not** expose a Model Context Protocol (MCP) server.
 There is no MCP command, server executable, or supported MCP client
 configuration to add yet.
 
+![Current agent integration uses the headless CLI while a future MCP adapter remains unavailable](../../assets/diagrams/agent-flow.svg)
+*Today, agents run an explicit local command and receive JSON plus separate warnings. The dashed MCP route is planned, not available.*
+
 ## Use the CLI from an agent today
 
 An agent with permission to run local commands can invoke the headless scanner
 directly:
 
-```bash
+```bash title="Agent command · Read-only local scan"
 debtdrone scan /absolute/path/to/repository \
   --format=json \
   --security-scan=false
@@ -25,7 +28,7 @@ for analyzer warnings.
 
 Add a quality gate only when the caller is prepared for a non-zero exit:
 
-```bash
+```bash title="Agent command · Scan with a quality gate"
 debtdrone scan /absolute/path/to/repository \
   --format=json \
   --fail-on=high \
@@ -57,4 +60,3 @@ Until then, use the command reference above and do not configure a
 
 See [System architecture](../architecture/) and
 [Scanner ownership](../ownership/) for the reusable scanner and SaaS boundary.
-

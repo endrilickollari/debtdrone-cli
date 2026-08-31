@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" role="img" aria-labelledby="title desc">
+  <title id="title">Current and planned DebtDrone agent flows</title>
+  <desc id="desc">The supported current flow runs the headless CLI with an explicit path and returns JSON on standard output and warnings on standard error. A direct MCP adapter is planned but unavailable.</desc>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#f7f6f8" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c5f542"/>
+    </marker>
+    <marker id="mutedArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6870"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="438" rx="16" fill="#0c0b0e" stroke="#302f34"/>
+  <rect x="1" y="1" width="958" height="438" rx="16" fill="url(#grid)"/>
+  <text x="48" y="48" fill="#c5f542" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="2">AGENTS / SUPPORTED PATH TODAY</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <g transform="translate(48 106)">
+      <rect width="148" height="92" rx="9" fill="#111013" stroke="#35343a"/>
+      <text x="18" y="28" fill="#99969f" font-size="10" letter-spacing="1.4">CALLER</text>
+      <text x="18" y="57" fill="#f7f6f8" font-size="15" font-weight="700">local agent</text>
+      <text x="18" y="77" fill="#99969f" font-size="10">command permission</text>
+    </g>
+
+    <g transform="translate(250 92)">
+      <rect width="356" height="120" rx="9" fill="#171619" stroke="#c5f542" stroke-opacity="0.6"/>
+      <circle cx="22" cy="22" r="4" fill="#e95d5d"/>
+      <circle cx="38" cy="22" r="4" fill="#d6bd4c"/>
+      <circle cx="54" cy="22" r="4" fill="#c5f542"/>
+      <text x="22" y="59" fill="#c5f542" font-size="11">$ debtdrone scan /absolute/path \</text>
+      <text x="38" y="82" fill="#f7f6f8" font-size="11">--format=json \</text>
+      <text x="38" y="105" fill="#f7f6f8" font-size="11">--security-scan=false</text>
+    </g>
+
+    <g transform="translate(664 78)">
+      <rect width="248" height="64" rx="8" fill="#c5f542" fill-opacity="0.12" stroke="#c5f542" stroke-opacity="0.45"/>
+      <text x="18" y="27" fill="#c5f542" font-size="11" font-weight="700">STDOUT</text>
+      <text x="18" y="47" fill="#f7f6f8" font-size="11">JSON findings array</text>
+    </g>
+    <g transform="translate(664 164)">
+      <rect width="248" height="64" rx="8" fill="#111013" stroke="#35343a"/>
+      <text x="18" y="27" fill="#99969f" font-size="11" font-weight="700">STDERR + EXIT</text>
+      <text x="18" y="47" fill="#f7f6f8" font-size="11">warnings · gate · failures</text>
+    </g>
+
+    <line x1="48" y1="270" x2="912" y2="270" stroke="#35343a"/>
+    <text x="48" y="306" fill="#99969f" font-size="10" letter-spacing="1.4">PLANNED · NOT AVAILABLE</text>
+    <rect x="250" y="330" width="356" height="64" rx="9" fill="#111013" stroke="#6b6870" stroke-dasharray="6 6"/>
+    <text x="428" y="357" fill="#99969f" font-size="12" font-weight="700" text-anchor="middle">local stdio MCP adapter</text>
+    <text x="428" y="378" fill="#6b6870" font-size="10" text-anchor="middle">no command or client config exists yet</text>
+  </g>
+
+  <g fill="none" stroke="#c5f542" stroke-width="1.5" marker-end="url(#arrow)">
+    <path d="M196 152 H242"/>
+    <path d="M606 135 H656"/>
+    <path d="M606 169 H636 V196 H656"/>
+  </g>
+  <path d="M122 198 V362 H242" fill="none" stroke="#6b6870" stroke-width="1.5" stroke-dasharray="6 6" marker-end="url(#mutedArrow)"/>
+  <path d="M606 362 H872" fill="none" stroke="#6b6870" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <text x="912" y="350" fill="#6b6870" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" text-anchor="end">FUTURE TOOL RESULT</text>
+</svg>

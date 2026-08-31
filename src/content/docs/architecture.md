@@ -11,6 +11,9 @@ Go modules.
 Read [Scanner ownership and contribution boundary](../ownership/) before making
 a change that also affects the SaaS.
 
+![Open-source scanner ownership boundary between CLI consumers and SaaS orchestration](../../assets/diagrams/cli-saas-boundary.svg)
+*The reusable scanner flows into both products; hosted product concerns never flow back into the scanner.*
+
 ## Dependency direction
 
 ```text

@@ -5,25 +5,28 @@ description: Install the DebtDrone CLI on macOS, Linux, or Windows.
 
 DebtDrone ships as a single binary. Core local scanning needs no companion service; [Trivy](https://trivy.dev/) is required only when security scanning is enabled. Choose the installation method that best fits your workflow.
 
+![Installation paths converge on version verification and a first local scan](../../assets/diagrams/install-paths.svg)
+*Choose a package manager, release archive, or source build; every path ends with the same local verification.*
+
 ---
 
 ## Option 1 — `go install`
 
 If you have Go 1.25.1 or later and a C compiler on your `PATH`, this is the fastest path to a working installation:
 
-```bash
+```bash title="Terminal · Install with Go"
 go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
 ```
 
 The binary is placed in `$(go env GOPATH)/bin`. Ensure that directory is on your `PATH`:
 
-```bash
+```bash title="Terminal · Add the Go bin directory"
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
 Verify the installation:
 
-```bash
+```bash title="Terminal · Verify the binary"
 debtdrone --version
 ```
 
@@ -49,7 +52,7 @@ Windows ARM64 is not currently supported in the pre-compiled release artifacts. 
 
 ### macOS / Linux
 
-```bash
+```bash title="Terminal · Install a macOS release archive"
 # Replace <version> and <platform> with the values for your system
 # Example: debtdrone_Darwin_arm64.tar.gz for Apple Silicon
 curl -L https://github.com/endrilickollari/debtdrone-cli/releases/latest/download/debtdrone_Darwin_arm64.tar.gz \
@@ -60,7 +63,7 @@ debtdrone --version
 
 ### Windows (PowerShell)
 
-```powershell
+```powershell title="PowerShell · Install a Windows release archive"
 # Download and extract
 Invoke-WebRequest -Uri "https://github.com/endrilickollari/debtdrone-cli/releases/latest/download/debtdrone_Windows_x86_64.zip" `
   -OutFile debtdrone.zip
@@ -76,14 +79,14 @@ $env:PATH += ";$env:LOCALAPPDATA\debtdrone"
 
 DebtDrone is published to a [Homebrew tap](https://github.com/endrilickollari/homebrew-tap):
 
-```bash
+```bash title="Terminal · Install with Homebrew"
 brew tap endrilickollari/tap
 brew install debtdrone
 ```
 
 Upgrade to the latest release at any time:
 
-```bash
+```bash title="Terminal · Upgrade with Homebrew"
 brew upgrade debtdrone
 ```
 
@@ -93,7 +96,7 @@ brew upgrade debtdrone
 
 Clone the repository and build with the standard Go toolchain:
 
-```bash
+```bash title="Terminal · Build from source"
 git clone https://github.com/endrilickollari/debtdrone-cli.git
 cd debtdrone-cli
 go build -o debtdrone ./cmd/debtdrone
@@ -120,7 +123,7 @@ headless `debtdrone update` subcommand in the current release.
 
 Run the following to confirm everything is working:
 
-```bash
+```bash title="Terminal · Verify and scan"
 # Show version information
 debtdrone --version
 
