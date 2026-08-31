@@ -47,7 +47,7 @@ npm run dev
 Before opening a pull request, produce the same static build used by CI:
 
 ```bash
-npm run build
+npm run check:docs
 ```
 
 Documentation source lives in `src/content/docs`, assets imported by pages live
@@ -119,7 +119,7 @@ Run checks proportional to the change:
 ```bash
 go test ./...
 go vet ./...
-npm run build
+npm run check:docs
 ```
 
 Documentation-only changes still need the production documentation build.

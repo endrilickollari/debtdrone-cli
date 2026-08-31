@@ -74,6 +74,7 @@ export default defineConfig({
           label: 'Project',
           items: [
             { label: 'Contributing', slug: 'contributing' },
+            { label: 'Documentation deployment', slug: 'deployment' },
             { label: 'Versioning and releases', slug: 'versioning' },
           ],
         },

@@ -41,11 +41,15 @@ Install the locked dependencies and build the production documentation site:
 
 ```bash
 npm ci
-npm run build
+npm run check:docs
 ```
 
 Use `npm run dev` for a local development server. The generated production site
-is written to `docs-dist/`.
+is written to `docs-dist/`. The documentation check also verifies the custom
+domain, canonical and sitemap URLs, crawler and agent discovery files, and the
+Pagefind search index. See the
+[documentation deployment runbook](src/content/docs/deployment.md) for the
+GitHub Pages workflow and recovery procedure.
 
 ## Cross-platform release validation
 
