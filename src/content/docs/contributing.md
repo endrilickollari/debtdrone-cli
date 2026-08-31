@@ -61,6 +61,34 @@ go run ./cmd/debtdrone --help
 go run ./cmd/debtdrone scan --help
 ```
 
+### Maintain visual documentation
+
+The documentation visual system mirrors the DebtDrone landing page: Geist for
+interface text, Geist Mono for commands and labels, matte charcoal surfaces,
+fine white hairlines, and lime only for active signals. Shared tokens and
+responsive visual framing live in `src/styles/custom.css`.
+
+Editable diagrams live in `src/assets/diagrams` as source SVG files. When a
+workflow changes:
+
+1. update the labels and paths in the relevant SVG;
+2. keep its internal `<title>` and `<desc>` accurate;
+3. update the Markdown image alt text and adjacent prose or caption;
+4. verify labels remain readable at a 320-pixel viewport; and
+5. run `npm run build` before opening a pull request.
+
+TUI screenshots must show the current executable rather than a recreated
+mockup. Capture them in a dark terminal with the repository font and color
+profile, crop away unrelated desktop content, retain enough resolution for
+zooming, and replace the existing PNG in `src/assets` without renaming it.
+Always describe the view and the user action it demonstrates in the image alt
+text and caption.
+
+The public documentation intentionally uses the same dark-only theme as the
+landing page. Review it with both light and dark operating-system preferences
+to confirm that the forced theme remains consistent, then check desktop and
+mobile widths plus keyboard focus and reduced-motion behavior.
+
 ## MkDocs migration map
 
 END-78 retains every substantive page from the former `docs/` tree. This map
@@ -97,4 +125,3 @@ npm run build
 Documentation-only changes still need the production documentation build.
 Scanner changes require focused tests plus the full Go suite. Releases and tags
 remain maintainer-only and run through the test-gated Release workflow.
-

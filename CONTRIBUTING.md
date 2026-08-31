@@ -224,6 +224,14 @@ Use `src/assets` for images imported by documentation pages and `public` for
 files that must retain a stable public path. Update the sidebar and site
 metadata in `astro.config.mjs`.
 
+Keep source diagrams in `src/assets/diagrams` as accessible SVG files with an
+internal title and description. Use the shared framing and design tokens in
+`src/styles/custom.css`; do not reproduce page-specific colors or shadows.
+TUI screenshots must come from the current executable and retain descriptive
+alt text and captions. The public
+[documentation contribution guide](src/content/docs/contributing.md) records
+the complete visual asset update workflow.
+
 Validate command examples against the current executable help before opening a
 pull request:
 

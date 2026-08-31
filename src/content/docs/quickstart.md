@@ -7,17 +7,20 @@ This tutorial takes you from installation to a useful local scan. It disables
 the optional Trivy analyzer for the first run so the result does not depend on
 another executable.
 
+![DebtDrone scan lifecycle from repository selection through analyzers to local results](../../assets/diagrams/scan-lifecycle.svg)
+*One scanner pipeline powers interactive exploration, JSON output, and CI quality gates.*
+
 ## 1. Install DebtDrone
 
 If you already have Go 1.25.1 or later and a C compiler, install the latest CLI release:
 
-```bash
+```bash title="Terminal · Install DebtDrone"
 go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@latest
 ```
 
 Confirm that the binary is available:
 
-```bash
+```bash title="Terminal · Check the installed version"
 debtdrone --version
 ```
 
@@ -28,7 +31,7 @@ one of the alternatives in [Install the CLI](../installation/).
 
 Change into a repository you want to inspect:
 
-```bash
+```bash title="Terminal · Enter a repository"
 cd /path/to/your/repository
 ```
 
@@ -39,13 +42,13 @@ root makes paths and output easier to read.
 
 Run the headless scanner with text output and security scanning disabled:
 
-```bash
+```bash title="Terminal · Run the first scan"
 debtdrone scan . --format=text --security-scan=false
 ```
 
 A repository with findings prints a table:
 
-```text
+```text title="Example · Findings table"
 SEVERITY   FILE:LINE                     RULE   MESSAGE
 --------   ---------                     ----   -------
 HIGH       /workspace/src/service.go:42  N/A    Function 'Run' has high cyclomatic complexity of 18 (threshold: 15)
@@ -53,7 +56,7 @@ HIGH       /workspace/src/service.go:42  N/A    Function 'Run' has high cyclomat
 
 A repository without findings prints:
 
-```text
+```text title="Example · No findings"
 No technical debt issues found.
 ```
 
@@ -64,7 +67,7 @@ error only when you explicitly provide `--fail-on`.
 
 Run the same scan as JSON:
 
-```bash
+```bash title="Terminal · Produce JSON"
 debtdrone scan . --format=json --security-scan=false
 ```
 
@@ -76,7 +79,7 @@ corrupt the JSON document.
 
 Fail the command when a `high` or `critical` finding is present:
 
-```bash
+```bash title="Terminal · Enforce a quality gate"
 debtdrone scan . --fail-on=high --security-scan=false
 ```
 
@@ -88,7 +91,7 @@ than preventing new debt.
 
 Launch the terminal interface from the same directory:
 
-```bash
+```bash title="Terminal · Open the TUI"
 debtdrone
 ```
 
