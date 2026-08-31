@@ -6,7 +6,10 @@ description: Scan technical debt locally, explore findings in the TUI, and enfor
 DebtDrone is an open-source technical-debt scanner with two local interfaces:
 an interactive terminal UI for investigation and a headless CLI for automation.
 Both use the same reusable scanner that the DebtDrone SaaS consumes as a
-versioned Go package.
+versioned Go package. Teams that need hosted repositories, dashboards,
+organizations, and issue workflows can use the
+[DebtDrone SaaS](https://debtdrone.net); this documentation remains focused on
+the open-source CLI and scanner API.
 
 ```bash
 debtdrone                              # Open the interactive TUI
