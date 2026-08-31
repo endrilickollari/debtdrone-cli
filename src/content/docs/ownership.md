@@ -24,7 +24,8 @@ The `debtdrone` SaaS repository owns hosted workers and queues, database/Redis
 persistence, issue reconciliation, authentication, organizations, plans,
 billing, repository credentials, dashboards, notifications, Jira, Trello,
 GitHub, AI features, and the React application. Those concerns must not be
-introduced into this module.
+introduced into this module. Use the
+[DebtDrone hosted product](https://debtdrone.net) for those SaaS workflows.
 
 ## Cross-repository workflow
 

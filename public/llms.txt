@@ -19,6 +19,7 @@ The current CLI does not expose an MCP server. Agents should invoke the headless
 
 ## Architecture and contribution
 
+- [DebtDrone SaaS](https://debtdrone.net): Hosted repository, organization, dashboard, and issue-management workflows.
 - [System architecture](https://cli.debtdrone.net/architecture/): Scanner data flow and package boundaries.
 - [Scanner ownership](https://cli.debtdrone.net/ownership/): Open-source scanner and SaaS responsibility boundary.
 - [Coverage for Go consumers](https://cli.debtdrone.net/scanner-coverage/): Opt-in coverage execution through the reusable scanner API.
