@@ -10,6 +10,7 @@ on:
       - 'astro.config.mjs'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/verify-docs-build.mjs'
       - 'tsconfig.json'
       - '.github/workflows/docs.yml'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'astro.config.mjs'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/verify-docs-build.mjs'
       - 'tsconfig.json'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
@@ -49,8 +51,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build documentation
-        run: npm run build
+      - name: Build and verify documentation
+        run: npm run check:docs
 
       - name: Upload documentation artifact
         uses: actions/upload-artifact@v4

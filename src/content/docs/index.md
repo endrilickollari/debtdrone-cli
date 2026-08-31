@@ -86,6 +86,7 @@ Concept pages explain boundaries and design decisions.
 ### Project information
 
 - [Contributing](./contributing/)
+- [Documentation deployment](./deployment/)
 - [Versioning and releases](./versioning/)
 
 ## Current capability boundaries

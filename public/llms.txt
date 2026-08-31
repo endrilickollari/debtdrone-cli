@@ -1,0 +1,26 @@
+# DebtDrone CLI
+
+> DebtDrone is an open-source technical-debt scanner with an interactive TUI, a headless CLI for automation, and a reusable Go scanner API.
+
+The current CLI does not expose an MCP server. Agents should invoke the headless CLI with an explicit repository path and consume JSON from stdout while treating stderr as a separate warning channel.
+
+## Start here
+
+- [Documentation overview](https://cli.debtdrone.net/): Choose the workflow that matches local exploration, CI automation, agent usage, or Go integration.
+- [Install the CLI](https://cli.debtdrone.net/installation/): Install a release and verify the binary.
+- [Run your first scan](https://cli.debtdrone.net/quickstart/): Complete a predictable local scan without optional security tooling.
+
+## Automation and agents
+
+- [Command reference](https://cli.debtdrone.net/command-reference/): Current commands, flags, output, and exit behavior.
+- [Run scans in CI/CD](https://cli.debtdrone.net/headless-usage/): JSON output, quality gates, and automation guidance.
+- [MCP and agents](https://cli.debtdrone.net/mcp-and-agents/): Supported agent integration today and the current MCP boundary.
+- [Troubleshooting](https://cli.debtdrone.net/troubleshooting/): Common installation, scan, output, and analyzer failures.
+
+## Architecture and contribution
+
+- [System architecture](https://cli.debtdrone.net/architecture/): Scanner data flow and package boundaries.
+- [Scanner ownership](https://cli.debtdrone.net/ownership/): Open-source scanner and SaaS responsibility boundary.
+- [Coverage for Go consumers](https://cli.debtdrone.net/scanner-coverage/): Opt-in coverage execution through the reusable scanner API.
+- [Contributing](https://cli.debtdrone.net/contributing/): Build, test, documentation, and contribution guidance.
+- [Source repository](https://github.com/endrilickollari/debtdrone-cli): DebtDrone CLI source, releases, issues, and pull requests.

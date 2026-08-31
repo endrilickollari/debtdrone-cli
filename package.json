@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "check:docs": "npm run build && node scripts/verify-docs-build.mjs",
     "preview": "astro preview"
   },
   "dependencies": {
