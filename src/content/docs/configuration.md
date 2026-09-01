@@ -1,35 +1,143 @@
 ---
 title: Configuration
-description: Configure current DebtDrone scans with CLI flags and understand the status of repository configuration.
+description: Understand DebtDrone's versioned local settings, validation, storage paths, and precedence rules.
 ---
 
-DebtDrone scans are currently configured with command-line flags or with the
-session-only settings in the interactive TUI. The CLI can generate a
-`.debtdrone.yaml` template, but the current scanner does **not** load values
-from that file yet.
+DebtDrone defines one versioned local configuration contract for future use by
+the headless CLI, MCP server, and interactive TUI. The shared resolver applies
+settings in this order, from lowest to highest priority:
 
-## Configure a headless scan
+1. built-in defaults
+2. the local configuration file
+3. `DEBTDRONE_*` environment variables
+4. explicitly supplied command flags
 
-Pass settings directly to `debtdrone scan`:
+Only a value that is present in a higher-priority layer replaces the resolved
+value. Explicit `false` and `0` values are preserved; they are not treated as
+missing.
+
+:::note[Integration status]
+The versioned schema and precedence resolver are available as the Sprint 3
+foundation. The current `scan`, `config`, MCP, and TUI entry points have not yet
+been routed through it. Until that integration lands, use scan flags for
+headless behavior. `config set` remains a non-persistent compatibility command.
+:::
+
+## Local configuration path
+
+DebtDrone builds the path from the operating system's user configuration
+directory instead of hard-coding a home-directory layout.
+
+| Platform | Default path |
+|---|---|
+| Linux and other Unix systems | `$XDG_CONFIG_HOME/debtdrone/config.yaml`, or `$HOME/.config/debtdrone/config.yaml` when `XDG_CONFIG_HOME` is unset |
+| macOS | `$HOME/Library/Application Support/debtdrone/config.yaml` |
+| Windows | `%AppData%\debtdrone\config.yaml` |
+
+The file is optional. A missing file contributes no overrides, so built-in
+defaults still resolve normally. Read failures and malformed files are returned
+to the caller instead of being silently ignored.
+
+## Version 1 schema
+
+Every file must declare its schema version:
+
+```yaml
+version: 1
+
+scan:
+  output_format: text
+  fail_on: none
+  max_complexity: 15
+  security_scan: true
+  coverage: false
+
+update:
+  checks: true
+
+ui:
+  show_line_numbers: true
+  max_results: 500
+
+history:
+  enabled: true
+```
+
+All sections and settings are optional after `version`. Omitted settings use
+the next available precedence layer.
+
+| Key | Environment variable | Default | Validation |
+|---|---|---|---|
+| `scan.output_format` | `DEBTDRONE_OUTPUT_FORMAT` | `text` | `text` or `json` |
+| `scan.fail_on` | `DEBTDRONE_FAIL_ON` | `none` | `none`, `low`, `medium`, `high`, or `critical` |
+| `scan.max_complexity` | `DEBTDRONE_MAX_COMPLEXITY` | `15` | Integer from `1` through `10000` |
+| `scan.security_scan` | `DEBTDRONE_SECURITY_SCAN` | `true` | `true` or `false` |
+| `scan.coverage` | `DEBTDRONE_COVERAGE` | `false` | `true` or `false` |
+| `update.checks` | `DEBTDRONE_UPDATE_CHECKS` | `true` | `true` or `false` |
+| `ui.show_line_numbers` | `DEBTDRONE_SHOW_LINE_NUMBERS` | `true` | `true` or `false` |
+| `ui.max_results` | `DEBTDRONE_MAX_RESULTS` | `500` | Integer from `0` through `100000`; `0` means unlimited |
+| `history.enabled` | `DEBTDRONE_HISTORY_ENABLED` | `true` | `true` or `false` |
+
+## Precedence examples
+
+Given this file:
+
+```yaml
+version: 1
+scan:
+  output_format: json
+  max_complexity: 20
+  security_scan: false
+```
+
+this environment value replaces only the configured complexity threshold:
+
+```bash
+export DEBTDRONE_MAX_COMPLEXITY=25
+```
+
+and this explicit flag wins over both when command integration is enabled:
+
+```bash
+debtdrone scan . --max-complexity=30
+```
+
+The result is JSON output, a complexity threshold of `30`, and security scanning
+disabled. Every resolved setting retains its source (`default`, `config_file`,
+`environment`, or `flag`) so commands can explain why a value was selected.
+
+## Strict validation and compatibility
+
+Configuration parsing is intentionally strict:
+
+- unknown sections or keys are rejected with the YAML line and field name;
+- unknown variables using the reserved `DEBTDRONE_*` prefix list the supported
+  environment variables;
+- invalid booleans, integers, enum values, and ranges name the affected key;
+- empty environment values are rejected instead of being interpreted as
+  defaults;
+- multiple YAML documents in one file are rejected;
+- read errors include the configuration path.
+
+DebtDrone currently supports schema version `1`. A file without `version` is
+invalid. An older version requests migration; a version newer than the running
+binary fails with an instruction to upgrade DebtDrone. A newer file is never
+partially interpreted as an older schema, which prevents unknown settings from
+being silently discarded.
+
+## Configure the current headless command
+
+Until the shared resolver is connected to commands, pass settings directly to
+`debtdrone scan`:
 
 ```bash
 debtdrone scan . \
   --format=json \
   --fail-on=high \
   --max-complexity=15 \
-  --security-scan=true
+  --security-scan=true \
+  --coverage=false
 ```
-
-| Flag | Default | Purpose |
-|---|---|---|
-| `--format` | `text` | Select `text` or `json` output |
-| `--fail-on` | unset | Return a non-zero exit when a finding reaches the selected severity |
-| `--max-complexity` | `15` | Report high cyclomatic complexity above this value; critical starts above twice this value |
-| `--security-scan` | `true` | Enable the Trivy analyzer |
-| `--coverage` | `false` | Parse existing coverage artifacts without running tests |
-
-Flags use their built-in defaults on every invocation. A committed
-`.debtdrone.yaml` does not currently override those defaults.
 
 :::caution[Trivy availability]
 Security scanning requires `trivy` on `PATH`. When Trivy is absent, DebtDrone
@@ -37,70 +145,18 @@ skips that analyzer. When Trivy starts but cannot complete, the CLI prints the
 available findings and returns a partial-scan error.
 :::
 
-## Generate the repository template
+## Repository template and current commands
 
-Run `debtdrone init` from the repository root:
+`debtdrone init` still generates the legacy `.debtdrone.yaml` repository
+template. That repository file is not the versioned user configuration above
+and is not loaded by current scans.
 
-```bash
-debtdrone init
-```
+`debtdrone config list` still reports its static compatibility values, while
+`debtdrone config set <key> <value>` prints an acknowledgement without writing
+a file. Persistent `list`, `get`, `set`, and `unset` behavior is the next
+configuration implementation step.
 
-DebtDrone creates `.debtdrone.yaml` and prints:
-
-```text
-Initialized .debtdrone.yaml successfully.
-```
-
-The generated template is:
-
-```yaml
-quality_gate:
-  fail_on: high
-
-thresholds:
-  max_complexity: 15
-  security_scan: true
-
-ignore_paths:
-  - "node_modules"
-  - "vendor"
-  - "dist"
-  - ".git"
-```
-
-Treat this file as a preview of the planned repository-owned configuration
-contract. Creating or editing it does not change scan behavior in the current
-release.
-
-## Inspect the current defaults
-
-`debtdrone config list` prints the settings represented by the CLI and TUI:
-
-```bash
-debtdrone config list
-```
-
-```text
-KEY                   VALUE   TYPE     DESCRIPTION
-Output Format         text    string   Render mode for scan results (text/json)
-Auto-Update Checks    true    bool     Check for newer releases on startup
-Fail on Severity      high    string   Min severity for non-zero exit code
-Max Complexity        15      int      Cyclomatic-complexity threshold per function
-Security Scan         true    bool     Run Trivy vulnerability detection
-Show Line Numbers     true    bool     Include line:col in the results list
-Max Results           500     int      Cap on issues rendered per scan
-```
-
-The command currently exposes text output only. It reports the built-in
-defaults; it does not read `.debtdrone.yaml`.
-
-## Current `config set` limitation
-
-`debtdrone config set <key> <value>` is a compatibility placeholder. It prints
-an acknowledgement but does not validate the key, update the running scanner,
-or persist a file. Do not use it for automation yet.
-
-To change a headless scan today, pass the corresponding flag directly. For TUI
-behavior, see [Interactive TUI configuration](../tui-usage/#config--interactive-settings-editor).
+For TUI behavior, see
+[Interactive TUI configuration](../tui-usage/#config--interactive-settings-editor).
 For the complete current command surface, see the
 [command reference](../command-reference/).

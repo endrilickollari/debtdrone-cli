@@ -96,7 +96,8 @@ Concept pages explain boundaries and design decisions.
 
 ## Current capability boundaries
 
-- Headless configuration is supplied through `scan` flags.
+- Headless configuration is supplied through `scan` flags; the versioned local
+  schema and precedence resolver are defined but not yet connected to commands.
 - `.debtdrone.yaml` is generated as a preview but is not loaded by scans.
 - `config set` does not persist changes.
 - Headless `history` returns demonstration entries; TUI history is session-only.

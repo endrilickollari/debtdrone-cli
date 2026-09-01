@@ -127,7 +127,10 @@ debtdrone scan . --max-complexity=15 --fail-on=high
 ```
 
 `debtdrone config list` displays static defaults, and `config set` does not
-persist changes in the current release.
+persist changes in the current release. The shared versioned local schema,
+OS-native storage paths, strict validation, and precedence contract are
+documented in the [configuration guide](https://cli.debtdrone.net/configuration/)
+ahead of command integration.
 
 ---
 
