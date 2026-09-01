@@ -119,7 +119,7 @@ func (s *Server) addScanRepositoryTool() {
 	mcp.AddTool(s.protocol, &mcp.Tool{
 		Name:        scanRepositoryToolName,
 		Title:       "Scan repository",
-		Description: "Scan a repository below the configured root for technical debt. Returns a deterministic, versioned report and never executes repository tests.",
+		Description: "Scan a repository below the configured root for technical debt. Returns a deterministic, versioned report, never executes repository tests, and runs at most one scan at a time per MCP server.",
 		InputSchema: scanRepositoryInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
@@ -156,6 +156,10 @@ func (s *Server) scanRepository(ctx context.Context, _ *mcp.CallToolRequest, inp
 	if err != nil {
 		return nil, ScanRepositoryOutput{}, err
 	}
+	if err := s.acquireScanSlot(ctx); err != nil {
+		return nil, ScanRepositoryOutput{}, err
+	}
+	defer func() { <-s.scanSlot }()
 
 	scan := s.scan
 	if scan == nil {
@@ -167,12 +171,18 @@ func (s *Server) scanRepository(ctx context.Context, _ *mcp.CallToolRequest, inp
 		Security:   scanner.SecurityOptions{Enabled: *input.SecurityScan},
 		Coverage:   scanner.CoverageOptions{Enabled: input.Coverage},
 	})
+	if contextErr := ctx.Err(); contextErr != nil {
+		scanErr = contextErr
+	}
 
 	status := "complete"
 	if scanErr != nil {
 		var partial *scanner.PartialFailureError
 		if !errors.As(scanErr, &partial) {
-			if errors.Is(scanErr, context.Canceled) || errors.Is(scanErr, context.DeadlineExceeded) {
+			if errors.Is(scanErr, context.DeadlineExceeded) {
+				return nil, ScanRepositoryOutput{}, fmt.Errorf("scan_repository timed out while scanning %q: %w", repositoryLabel, scanErr)
+			}
+			if errors.Is(scanErr, context.Canceled) {
 				return nil, ScanRepositoryOutput{}, fmt.Errorf("scan_repository cancelled while scanning %q: %w", repositoryLabel, scanErr)
 			}
 			return nil, ScanRepositoryOutput{}, fmt.Errorf("scan_repository could not scan %q: %w", repositoryLabel, scanErr)
@@ -189,6 +199,29 @@ func (s *Server) scanRepository(ctx context.Context, _ *mcp.CallToolRequest, inp
 		summary += " (response truncated; inspect omitted and limits)"
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: summary}}}, output, nil
+}
+
+func (s *Server) acquireScanSlot(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return scanCapacityContextError(err)
+	}
+	select {
+	case s.scanSlot <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-s.scanSlot
+			return scanCapacityContextError(err)
+		}
+		return nil
+	case <-ctx.Done():
+		return scanCapacityContextError(ctx.Err())
+	}
+}
+
+func scanCapacityContextError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("scan_repository timed out while waiting for scan capacity: %w", err)
+	}
+	return fmt.Errorf("scan_repository cancelled while waiting for scan capacity: %w", err)
 }
 
 func applyInputDefaults(input ScanRepositoryInput) ScanRepositoryInput {
@@ -222,18 +255,35 @@ func resolveRepositoryPath(root, requested string) (string, string, error) {
 	if requested == "" {
 		requested = "."
 	}
-
-	root = filepath.Clean(root)
-	candidate := requested
-	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(root, candidate)
+	if isAbsoluteRepositoryPath(requested) {
+		return "", "", fmt.Errorf("repository path %q must be relative to the configured MCP root", requested)
 	}
-	candidate = filepath.Clean(candidate)
-	relative, err := filepath.Rel(root, candidate)
+
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve configured MCP root %q: %w", root, err)
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(absoluteRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve configured MCP root %q: %w", root, err)
+	}
+	resolvedRoot = filepath.Clean(resolvedRoot)
+
+	portableRequested := strings.ReplaceAll(requested, "\\", "/")
+	candidate := filepath.Clean(filepath.Join(resolvedRoot, filepath.FromSlash(portableRequested)))
+	relative, err := filepath.Rel(resolvedRoot, candidate)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return "", "", fmt.Errorf("repository path %q is outside the configured MCP root", requested)
 	}
-	info, err := os.Stat(candidate)
+	resolvedCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", "", fmt.Errorf("inspect repository path %q: %w", requested, err)
+	}
+	resolvedRelative, err := filepath.Rel(resolvedRoot, resolvedCandidate)
+	if err != nil || resolvedRelative == ".." || strings.HasPrefix(resolvedRelative, ".."+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("repository path %q resolves outside the configured MCP root", requested)
+	}
+	info, err := os.Stat(resolvedCandidate)
 	if err != nil {
 		return "", "", fmt.Errorf("inspect repository path %q: %w", requested, err)
 	}
@@ -241,7 +291,17 @@ func resolveRepositoryPath(root, requested string) (string, string, error) {
 		return "", "", fmt.Errorf("repository path %q is not a directory", requested)
 	}
 
-	return candidate, filepath.ToSlash(relative), nil
+	return resolvedCandidate, filepath.ToSlash(relative), nil
+}
+
+func isAbsoluteRepositoryPath(requested string) bool {
+	normalized := strings.ReplaceAll(requested, "\\", "/")
+	if filepath.IsAbs(filepath.FromSlash(normalized)) || strings.HasPrefix(normalized, "/") {
+		return true
+	}
+	return len(normalized) >= 2 &&
+		((normalized[0] >= 'a' && normalized[0] <= 'z') || (normalized[0] >= 'A' && normalized[0] <= 'Z')) &&
+		normalized[1] == ':'
 }
 
 func buildScanOutput(repository, status string, report scanner.Report, maxFindings int) (ScanRepositoryOutput, error) {
