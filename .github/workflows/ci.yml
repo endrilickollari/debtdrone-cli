@@ -32,3 +32,23 @@ jobs:
         # report for information without blocking the CI pipeline.
         run: ./debtdrone scan ./ --format=text --fail-on=high
         continue-on-error: true
+
+  mcp-protocol:
+    name: MCP Protocol (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Run MCP stdio integration tests
+        run: go test -v ./cmd/debtdrone -run '^TestMCPStdioIntegration$'

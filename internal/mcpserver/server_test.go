@@ -3,13 +3,22 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNormalDisconnectClassification(t *testing.T) {
+	closing := &jsonrpc.Error{Code: serverClosingCode, Message: "server is closing"}
+	assert.True(t, isNormalDisconnect(fmt.Errorf("close MCP session: %w", closing)))
+	assert.False(t, isNormalDisconnect(&jsonrpc.Error{Code: -32603, Message: "internal error"}))
+	assert.False(t, isNormalDisconnect(errors.New("transport failed")))
+}
 
 func TestServerInitializesAndStopsOnCancellation(t *testing.T) {
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
