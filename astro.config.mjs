@@ -67,7 +67,7 @@ export default defineConfig({
           items: [
             { label: 'System architecture', slug: 'architecture' },
             { label: 'Scanner ownership', slug: 'ownership' },
-            { label: 'MCP and agents', slug: 'mcp-and-agents' },
+            { label: 'MCP and coding agents', slug: 'mcp-and-agents' },
           ],
         },
         {

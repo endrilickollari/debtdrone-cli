@@ -105,6 +105,26 @@ through the original installation method, such as:
 brew upgrade debtdrone
 ```
 
+## An MCP client cannot connect
+
+First confirm that the installed binary exposes the server and that the
+configured root exists:
+
+```bash
+debtdrone mcp --help
+command -v debtdrone
+test -d /absolute/path/to/repository
+test -x /absolute/path/to/repository
+```
+
+The agent may not inherit your shell `PATH`; use the executable's absolute
+path in that case. Keep the transport set to stdio and never merge stderr into
+stdout, which is reserved for protocol messages.
+
+The [MCP and coding agents guide](../mcp-and-agents/#troubleshoot-the-connection)
+covers Codex and Claude Code status checks, permissions, stderr diagnostics,
+protocol failures, and scan timeouts.
+
 ## Report a reproducible problem
 
 Search the [GitHub issues](https://github.com/endrilickollari/debtdrone-cli/issues)
@@ -118,4 +138,3 @@ before opening a report. Include:
 
 Do not post suspected vulnerabilities publicly. Follow the private contact
 instructions in the repository's [Security Policy](https://github.com/endrilickollari/debtdrone-cli/security/policy).
-

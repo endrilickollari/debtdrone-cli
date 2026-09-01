@@ -41,10 +41,12 @@ matching severity should return a non-zero status in CI.
 
 ### Call DebtDrone from an agent
 
-Agents can invoke the headless CLI and parse JSON today. The current release
-does not yet expose an MCP server or supported MCP client configuration.
+Connect Codex or Claude Code to the local, read-only MCP server. The
+`scan_repository` tool uses the same scanner as the CLI and stays within the
+repository root you configure. MCP is currently available on `main` and
+will enter tagged distribution with the next approved release.
 
-[Understand MCP and agent usage →](./mcp-and-agents/)
+[Connect a coding agent →](./mcp-and-agents/)
 
 ### Embed the scanner in Go
 
@@ -84,7 +86,7 @@ Concept pages explain boundaries and design decisions.
 
 - [System architecture](./architecture/)
 - [Scanner ownership and contribution boundary](./ownership/)
-- [MCP and agents](./mcp-and-agents/)
+- [MCP and coding agents](./mcp-and-agents/)
 
 ### Project information
 
@@ -100,7 +102,8 @@ Concept pages explain boundaries and design decisions.
 - Headless `history` returns demonstration entries; TUI history is session-only.
 - Trivy security analysis is optional and can be disabled with
   `--security-scan=false`.
-- There is no MCP server in the current release.
+- The MCP server is local, stdio-only, read-only, and restricted to an explicit
+  repository root.
 
 The documentation calls out these limitations explicitly so examples remain
 safe for scripts, CI systems, and agents.
