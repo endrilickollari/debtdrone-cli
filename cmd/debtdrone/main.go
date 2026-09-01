@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/tui"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/update"
@@ -45,7 +46,7 @@ func runAutoUpdate() {
 	}
 }
 
-func main() {
+func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "debtdrone",
 		Short: "DebtDrone — Technical Debt Analyzer",
@@ -70,9 +71,16 @@ For CI/CD pipelines and scripted workflows, use the 'scan' subcommand:
 
 	rootCmd.Version = fmt.Sprintf("%s (commit %s, built at %s)", version, commit, date)
 
-	rootCmd.AddCommand(newScanCmd(), newInitCmd(), newConfigCmd(), newHistoryCmd())
+	rootCmd.AddCommand(newScanCmd(), newInitCmd(), newConfigCmd(), newHistoryCmd(), newMCPCmd())
 
-	if err := rootCmd.Execute(); err != nil {
+	return rootCmd
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	if err := newRootCmd().ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
 }
