@@ -64,6 +64,10 @@ func resolveMCPRoot(root string) (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("MCP root %q is not a directory", root)
 	}
+	resolvedRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve MCP root symlinks %q: %w", root, err)
+	}
 
-	return filepath.Clean(absRoot), nil
+	return filepath.Clean(resolvedRoot), nil
 }

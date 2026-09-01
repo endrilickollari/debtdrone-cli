@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,9 +69,12 @@ func TestScanRepositoryToolAdvertisesExplicitReadOnlySchema(t *testing.T) {
 	require.Len(t, result.Tools, 1)
 	tool := result.Tools[0]
 	assert.Equal(t, scanRepositoryToolName, tool.Name)
+	assert.Contains(t, tool.Description, "at most one scan at a time")
 	require.NotNil(t, tool.Annotations)
 	assert.True(t, tool.Annotations.ReadOnlyHint)
 	assert.True(t, tool.Annotations.IdempotentHint)
+	require.NotNil(t, tool.Annotations.DestructiveHint)
+	assert.False(t, *tool.Annotations.DestructiveHint)
 	require.NotNil(t, tool.Annotations.OpenWorldHint)
 	assert.True(t, *tool.Annotations.OpenWorldHint)
 
@@ -139,7 +143,9 @@ func TestScanRepositoryToolDelegatesToScannerAndOrdersOutput(t *testing.T) {
 	})
 
 	assert.False(t, result.IsError)
-	assert.Equal(t, repository, capturedPath)
+	resolvedRepository, err := filepath.EvalSymlinks(repository)
+	require.NoError(t, err)
+	assert.Equal(t, resolvedRepository, capturedPath)
 	assert.Equal(t, scanner.ScopeFull, capturedOptions.Scope.Mode)
 	assert.Equal(t, 25, capturedOptions.Complexity.MaxCyclomatic)
 	assert.True(t, capturedOptions.Security.Enabled)
@@ -213,16 +219,75 @@ func TestScanRepositoryToolMapsFatalAndPartialFailures(t *testing.T) {
 	})
 }
 
-func TestScanRepositoryToolConfinesLexicalPathsToRoot(t *testing.T) {
+func TestScanRepositoryToolRejectsAbsoluteAndTraversalPaths(t *testing.T) {
 	called := false
-	server := newServer(t.TempDir(), "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
+	root := t.TempDir()
+	server := newServer(root, "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
 		called = true
 		return scanner.Report{}, nil
 	})
-	result, _ := callScanRepository(t, connectTestClient(t, server), map[string]any{"path": "../outside"})
+	session := connectTestClient(t, server)
+
+	for _, test := range []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "absolute path", path: root, want: "must be relative"},
+		{name: "parent traversal", path: "../outside", want: "outside the configured MCP root"},
+		{name: "Windows absolute path", path: `C:\outside`, want: "must be relative"},
+		{name: "Windows drive-relative path", path: `C:outside`, want: "must be relative"},
+		{name: "UNC absolute path", path: `\\server\share`, want: "must be relative"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, _ := callScanRepository(t, session, map[string]any{"path": test.path})
+			assert.True(t, result.IsError)
+			assert.Contains(t, result.Content[0].(*mcp.TextContent).Text, test.want)
+		})
+	}
+	assert.False(t, called)
+}
+
+func TestScanRepositoryToolRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	escape := filepath.Join(root, "escape")
+	if err := os.Symlink(t.TempDir(), escape); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	called := false
+	server := newServer(root, "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
+		called = true
+		return scanner.Report{}, nil
+	})
+
+	result, _ := callScanRepository(t, connectTestClient(t, server), map[string]any{"path": "escape"})
+
 	assert.True(t, result.IsError)
 	assert.False(t, called)
-	assert.Contains(t, result.Content[0].(*mcp.TextContent).Text, "outside the configured MCP root")
+	assert.Contains(t, result.Content[0].(*mcp.TextContent).Text, "resolves outside the configured MCP root")
+}
+
+func TestScanRepositoryToolAllowsSymlinkWithinRoot(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "repository")
+	require.NoError(t, os.Mkdir(target, 0o700))
+	link := filepath.Join(root, "alias")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	var capturedPath string
+	server := newServer(root, "test", func(_ context.Context, path string, _ scanner.Options) (scanner.Report, error) {
+		capturedPath = path
+		return scanner.Report{}, nil
+	})
+
+	result, output := callScanRepository(t, connectTestClient(t, server), map[string]any{"path": "alias"})
+
+	assert.False(t, result.IsError)
+	resolvedTarget, err := filepath.EvalSymlinks(target)
+	require.NoError(t, err)
+	assert.Equal(t, resolvedTarget, capturedPath)
+	assert.Equal(t, "alias", output.Repository)
 }
 
 func TestScanRepositoryToolRejectsMissingRepository(t *testing.T) {
@@ -235,6 +300,167 @@ func TestScanRepositoryToolRejectsMissingRepository(t *testing.T) {
 	assert.True(t, result.IsError)
 	assert.False(t, called)
 	assert.Contains(t, result.Content[0].(*mcp.TextContent).Text, "inspect repository path")
+}
+
+func TestScanRepositoryToolLimitsConcurrentScans(t *testing.T) {
+	const requests = 4
+	var active, maximum atomic.Int32
+	started := make(chan struct{}, requests)
+	release := make(chan struct{})
+	server := newServer(t.TempDir(), "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
+		current := active.Add(1)
+		for observed := maximum.Load(); current > observed && !maximum.CompareAndSwap(observed, current); observed = maximum.Load() {
+		}
+		started <- struct{}{}
+		<-release
+		active.Add(-1)
+		return scanner.Report{}, nil
+	})
+
+	errors := make(chan error, requests)
+	for range requests {
+		go func() {
+			_, _, err := server.scanRepository(context.Background(), nil, ScanRepositoryInput{})
+			errors <- err
+		}()
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first scan did not start")
+	}
+	secondStarted := false
+	select {
+	case <-started:
+		secondStarted = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	for range requests {
+		require.NoError(t, <-errors)
+	}
+
+	assert.False(t, secondStarted, "more than one scan started before capacity was released")
+	assert.Equal(t, int32(maximumConcurrentScans), maximum.Load())
+}
+
+func TestScanRepositoryToolCancelsWhileWaitingForCapacity(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	server := newServer(t.TempDir(), "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		return scanner.Report{}, nil
+	})
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, _, err := server.scanRepository(context.Background(), nil, ScanRepositoryInput{})
+		firstDone <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first scan did not start")
+	}
+
+	waitingCtx, cancelWaiting := context.WithCancel(context.Background())
+	secondDone := make(chan error, 1)
+	go func() {
+		_, _, err := server.scanRepository(waitingCtx, nil, ScanRepositoryInput{})
+		secondDone <- err
+	}()
+	cancelWaiting()
+
+	select {
+	case err := <-secondDone:
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Contains(t, err.Error(), "waiting for scan capacity")
+	case <-time.After(time.Second):
+		t.Fatal("waiting scan did not observe cancellation")
+	}
+	assert.Equal(t, int32(1), calls.Load())
+	close(release)
+	require.NoError(t, <-firstDone)
+}
+
+func TestScanRepositoryToolDoesNotStartForCancelledRequest(t *testing.T) {
+	var called atomic.Bool
+	server := newServer(t.TempDir(), "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
+		called.Store(true)
+		return scanner.Report{}, nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := server.scanRepository(ctx, nil, ScanRepositoryInput{})
+
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.False(t, called.Load())
+}
+
+func TestScanRepositoryToolPropagatesProtocolCancellationToScanner(t *testing.T) {
+	started := make(chan struct{})
+	observed := make(chan error, 1)
+	server := newServer(t.TempDir(), "test", func(ctx context.Context, _ string, _ scanner.Options) (scanner.Report, error) {
+		close(started)
+		<-ctx.Done()
+		observed <- ctx.Err()
+		return scanner.Report{}, ctx.Err()
+	})
+	session := connectTestClient(t, server)
+	callCtx, cancelCall := context.WithCancel(context.Background())
+	callDone := make(chan error, 1)
+	go func() {
+		_, err := session.CallTool(callCtx, &mcp.CallToolParams{Name: scanRepositoryToolName})
+		callDone <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not start")
+	}
+	cancelCall()
+
+	select {
+	case err := <-observed:
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not observe protocol cancellation")
+	}
+	select {
+	case err := <-callDone:
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("cancelled protocol call did not return")
+	}
+}
+
+func TestScanRepositoryToolPropagatesDeadlineToScanner(t *testing.T) {
+	observed := make(chan error, 1)
+	server := newServer(t.TempDir(), "test", func(ctx context.Context, _ string, _ scanner.Options) (scanner.Report, error) {
+		<-ctx.Done()
+		observed <- ctx.Err()
+		return scanner.Report{}, ctx.Err()
+	})
+	callCtx, cancelCall := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancelCall()
+
+	_, _, err := server.scanRepository(callCtx, nil, ScanRepositoryInput{})
+
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out while scanning")
+	select {
+	case scannerErr := <-observed:
+		assert.ErrorIs(t, scannerErr, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not observe request deadline")
+	}
 }
 
 func TestScanRepositoryToolBoundsLargeResponses(t *testing.T) {

@@ -57,10 +57,27 @@ func TestMCPCommandValidatesAndResolvesRoot(t *testing.T) {
 	root := rootWithMCP(runner)
 	stdout, stderr, err := executeCommandWithStreams(root, "mcp", "--root", relativeRoot)
 	require.NoError(t, err)
+	canonicalRoot, err := filepath.EvalSymlinks(repositoryRoot)
+	require.NoError(t, err)
 	assert.Empty(t, stdout, "MCP protocol stdout must not contain command diagnostics")
 	assert.Empty(t, stderr)
-	assert.Equal(t, filepath.Clean(repositoryRoot), receivedRoot)
+	assert.Equal(t, filepath.Clean(canonicalRoot), receivedRoot)
 	assert.Equal(t, "test-version", receivedVersion)
+}
+
+func TestMCPCommandCanonicalizesSymlinkRoot(t *testing.T) {
+	target := t.TempDir()
+	link := filepath.Join(t.TempDir(), "root")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	resolved, err := resolveMCPRoot(link)
+
+	require.NoError(t, err)
+	canonicalTarget, err := filepath.EvalSymlinks(target)
+	require.NoError(t, err)
+	assert.Equal(t, canonicalTarget, resolved)
 }
 
 func TestMCPCommandRejectsInvalidRoots(t *testing.T) {

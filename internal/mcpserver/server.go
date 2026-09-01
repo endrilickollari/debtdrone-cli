@@ -8,13 +8,18 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const serverName = "debtdrone"
+const (
+	serverName = "debtdrone"
+	// Keep this limit synchronized with the scan_repository tool description.
+	maximumConcurrentScans = 1
+)
 
 // Server owns one MCP protocol server and its configured repository boundary.
 type Server struct {
 	root     string
 	protocol *mcp.Server
 	scan     scanFunc
+	scanSlot chan struct{}
 }
 
 // New creates an MCP server scoped to root.
@@ -31,7 +36,8 @@ func newServer(root, version string, scan scanFunc) *Server {
 		}, &mcp.ServerOptions{
 			Capabilities: &mcp.ServerCapabilities{},
 		}),
-		scan: scan,
+		scan:     scan,
+		scanSlot: make(chan struct{}, maximumConcurrentScans),
 	}
 	server.addScanRepositoryTool()
 	return server
