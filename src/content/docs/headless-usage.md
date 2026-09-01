@@ -170,8 +170,12 @@ produce warnings on stderr.
 - `debtdrone config list` prints static defaults; `config set` does not persist
   changes yet.
 - `debtdrone history` currently returns demonstration entries rather than a
-  persistent record of prior CLI runs.
+  persistent record of prior CLI runs. Successful and partial scans do write
+  bounded summaries to the local store, which the history command will expose
+  in subsequent Sprint 3 work.
 
 See [Configuration](../configuration/) for the exact current limitations.
+See [Local history storage](../history-storage/) for the persistence and privacy
+contract.
 For common pipeline and analyzer failures, see
 [Troubleshooting](../troubleshooting/).

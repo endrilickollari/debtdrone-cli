@@ -15,6 +15,10 @@ import (
 )
 
 func newScanCmd() *cobra.Command {
+	return newScanCommand(service.NewScanService())
+}
+
+func newScanCommand(svc *service.ScanService) *cobra.Command {
 	var (
 		format        string
 		failOn        string
@@ -39,7 +43,6 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				return fmt.Errorf("failed to resolve path %q: %w", targetPath, err)
 			}
 
-			svc := service.NewScanService()
 			ctx := context.WithValue(context.Background(), "isCLI", true)
 			opts := service.ScanOptions{
 				MaxComplexity: maxComplexity,

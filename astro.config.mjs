@@ -59,6 +59,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { label: 'Command reference', slug: 'command-reference' },
+            { label: 'Local history storage', slug: 'history-storage' },
             { label: 'Coverage for Go consumers', slug: 'scanner-coverage' },
           ],
         },

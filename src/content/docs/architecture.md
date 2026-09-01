@@ -54,6 +54,8 @@ infer them from logs.
   presentation.
 - `internal/mcpserver` adapts the public scanner report to the local,
   root-confined MCP tool contract.
+- `internal/localconfig` and `internal/localhistory` own versioned, bounded
+  user-local state without introducing SaaS persistence into the scanner.
 - `internal/store/memory` provides local ephemeral persistence.
 - `internal/git`, `internal/config`, and `internal/update` are CLI support code.
 - `internal/tui` is the Bubble Tea presentation adapter.

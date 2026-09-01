@@ -13,6 +13,7 @@ Coding agents can start `debtdrone mcp --root <absolute-path>` as a local, read-
 ## Automation and agents
 
 - [Command reference](https://cli.debtdrone.net/command-reference/): Current commands, flags, output, and exit behavior.
+- [Local history storage](https://cli.debtdrone.net/history-storage/): Versioned format, privacy boundary, retention, concurrency, and recovery behavior.
 - [Run scans in CI/CD](https://cli.debtdrone.net/headless-usage/): JSON output, quality gates, and automation guidance.
 - [MCP and coding agents](https://cli.debtdrone.net/mcp-and-agents/): Codex and Claude Code setup, verification, tool inputs, security, and troubleshooting.
 - [Troubleshooting](https://cli.debtdrone.net/troubleshooting/): Common installation, scan, output, and analyzer failures.

@@ -92,8 +92,10 @@ debtdrone scan . --max-complexity=12 --fail-on=high
 ## `history` does not show a previous run
 
 The headless `debtdrone history` command currently returns demonstration data.
-TUI history contains only scans completed during the current process and is
-discarded when the TUI exits.
+The TUI history browser also shows only scans completed during the current
+process. Completed scan summaries are persisted in the
+[local history store](../history-storage/), but the history command and TUI
+browser do not read that store yet.
 
 ## The TUI updater cannot replace the binary
 
