@@ -1,8 +1,8 @@
 # DebtDrone CLI
 
-> DebtDrone is an open-source technical-debt scanner with an interactive TUI, a headless CLI for automation, and a reusable Go scanner API.
+> DebtDrone is an open-source technical-debt scanner with an interactive TUI, a headless CLI for automation, a local MCP server, and a reusable Go scanner API.
 
-The current CLI does not expose an MCP server. Agents should invoke the headless CLI with an explicit repository path and consume JSON from stdout while treating stderr as a separate warning channel.
+Coding agents can start `debtdrone mcp --root <absolute-path>` as a local, read-only stdio server. Its `scan_repository` tool cannot access paths outside the configured root. MCP is currently available on `main` and is not included in the latest tagged release, `v2.1.0`.
 
 ## Start here
 
@@ -14,7 +14,7 @@ The current CLI does not expose an MCP server. Agents should invoke the headless
 
 - [Command reference](https://cli.debtdrone.net/command-reference/): Current commands, flags, output, and exit behavior.
 - [Run scans in CI/CD](https://cli.debtdrone.net/headless-usage/): JSON output, quality gates, and automation guidance.
-- [MCP and agents](https://cli.debtdrone.net/mcp-and-agents/): Supported agent integration today and the current MCP boundary.
+- [MCP and coding agents](https://cli.debtdrone.net/mcp-and-agents/): Codex and Claude Code setup, verification, tool inputs, security, and troubleshooting.
 - [Troubleshooting](https://cli.debtdrone.net/troubleshooting/): Common installation, scan, output, and analyzer failures.
 
 ## Architecture and contribution

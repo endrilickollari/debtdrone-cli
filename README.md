@@ -11,9 +11,10 @@
 
 **DebtDrone CLI** is a lightning-fast, highly configurable technical debt analyzer. 
 
-Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically-linked Go binary that serves two distinct purposes:
+Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically-linked Go binary that serves three distinct purposes:
 1. **Interactive TUI:** A beautiful, responsive terminal interface for developers to explore code complexity locally.
 2. **Headless CLI:** A robust, pipeline-ready executable for CI/CD environments with strict quality gates and JSON outputs.
+3. **Coding-agent MCP:** A local, read-only stdio server on `main` for scanning an explicitly configured repository root.
 
 ---
 
@@ -32,6 +33,17 @@ Built on [Cobra](https://github.com/spf13/cobra).
 * **Structured Output:** Export results to standard Text tables or machine-readable JSON (`--format=json`).
 * **Deterministic Execution:** Bypasses all interactive prompts to ensure pipelines never hang.
 * **Explicit Scan Controls:** Configure each run with flags such as `--fail-on`, `--max-complexity`, and `--security-scan`.
+
+### 🔌 MCP Server (For Coding Agents)
+* **Supported Clients:** Connect Codex or Claude Code through local stdio.
+* **Scoped Access:** Every tool path stays within the repository root supplied to `debtdrone mcp --root`.
+* **Stable Results:** `scan_repository` returns a versioned, deterministic scanner report.
+
+[Configure DebtDrone for a coding agent →](https://cli.debtdrone.net/mcp-and-agents/)
+
+> **Release status:** MCP is available on `main` but is not part of the
+> latest tagged release, `v2.1.0`. The agent guide includes a temporary
+> source installation until the next approved release.
 
 ---
 
@@ -151,6 +163,7 @@ DebtDrone uses a strict **Ports & Adapters (Hexagonal)** architecture to ensure 
 
 * **`internal/analysis/`**: The core business logic. Pure Go, UI-blind, highly concurrent scanning engine.
 * **`cmd/debtdrone/`**: The Cobra routing layer. Handles headless execution, flag parsing, and OS exit codes.
+* **`internal/mcpserver/`**: The local stdio adapter for the reusable scanner.
 * **`internal/tui/`**: The presentation layer. Implements the Bubble Tea Nested Router Pattern. Every major screen (AppModel, ConfigModel, ScanModel) is fully encapsulated and communicates via event-driven `tea.Msg` passing.
 
 ---

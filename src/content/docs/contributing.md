@@ -109,8 +109,8 @@ records the destination so later cleanup remains reviewable.
 | `mkdocs.yml` | `astro.config.mjs` | Replaced by Starlight configuration |
 
 No substantive MkDocs page was deleted without a destination. New workflow
-pages—quickstart, command reference, MCP and agents, troubleshooting, and this
-contributing guide—were added directly in Starlight.
+pages—quickstart, command reference, MCP and coding agents, troubleshooting,
+and this contributing guide—were added directly in Starlight.
 
 ## Pull-request checks
 

@@ -24,6 +24,7 @@ Running without a command opens the interactive TUI in the current directory.
 | Command | Purpose |
 |---|---|
 | `scan [path]` | Run a headless technical-debt scan |
+| `mcp --root <path>` | Run the local, read-only MCP server over stdio |
 | `init` | Generate a preview `.debtdrone.yaml` file |
 | `config list` | Print static configuration defaults |
 | `config set [key] [value]` | Compatibility placeholder; does not persist changes |
@@ -62,6 +63,30 @@ Text output is a findings table. JSON output is an array of
 `TechnicalDebtIssue` objects. Warnings use stderr. A non-zero exit can mean a
 quality-gate violation, invalid input, or an analyzer error after partial
 results were printed.
+
+## `debtdrone mcp`
+
+:::note[Release availability]
+This command is available on `main` but is not included in `v2.1.0`. Follow
+[MCP and coding agents](../mcp-and-agents/#before-you-connect-an-agent) for the
+temporary source installation.
+:::
+
+```text
+debtdrone mcp --root <path>
+```
+
+Starts the Model Context Protocol server on stdin and stdout. `--root` is
+required and must be an existing directory. DebtDrone resolves the root to a
+canonical absolute path before starting the server.
+
+The server exposes the read-only `scan_repository` tool. Tool paths must be
+relative to the configured root; absolute paths, parent traversal, and symlink
+escapes are rejected. Stdout is reserved for MCP protocol messages, so use an
+MCP client rather than parsing this command directly.
+
+See [MCP and coding agents](../mcp-and-agents/) for Codex and Claude Code
+configuration, tool inputs, verification, and security guidance.
 
 ## `debtdrone init`
 
