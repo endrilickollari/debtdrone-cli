@@ -4,6 +4,7 @@ package mcpserver
 import (
 	"context"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/scanner"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -13,11 +14,16 @@ const serverName = "debtdrone"
 type Server struct {
 	root     string
 	protocol *mcp.Server
+	scan     scanFunc
 }
 
 // New creates an MCP server scoped to root.
 func New(root, version string) *Server {
-	return &Server{
+	return newServer(root, version, scanner.Scan)
+}
+
+func newServer(root, version string, scan scanFunc) *Server {
+	server := &Server{
 		root: root,
 		protocol: mcp.NewServer(&mcp.Implementation{
 			Name:    serverName,
@@ -25,7 +31,10 @@ func New(root, version string) *Server {
 		}, &mcp.ServerOptions{
 			Capabilities: &mcp.ServerCapabilities{},
 		}),
+		scan: scan,
 	}
+	server.addScanRepositoryTool()
+	return server
 }
 
 // Run serves a single MCP session until the client disconnects or ctx is cancelled.
