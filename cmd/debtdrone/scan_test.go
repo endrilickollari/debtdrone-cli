@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localhistory"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +17,7 @@ import (
 
 func createRootWithScan() *cobra.Command {
 	root := &cobra.Command{Use: "debtdrone"}
-	root.AddCommand(newScanCmd())
+	root.AddCommand(newScanCommand(service.NewScanServiceWithHistory(nil)))
 	return root
 }
 
@@ -32,6 +34,23 @@ func TestScanCmd_PrintsPartialResultsBeforeReturningAnalyzerError(t *testing.T) 
 	jsonOutput := strings.SplitN(output, "\nError:", 2)[0]
 	assert.True(t, json.Valid([]byte(jsonOutput)), "partial scan stdout must remain valid JSON: %s", jsonOutput)
 	assert.Contains(t, jsonOutput, "complexity")
+}
+
+func TestScanCmdRecordsSuccessfulScanHistory(t *testing.T) {
+	testRepo := setupTestRepo(t)
+	history, err := localhistory.New(filepath.Join(t.TempDir(), "history.json"))
+	require.NoError(t, err)
+	root := &cobra.Command{Use: "debtdrone"}
+	root.AddCommand(newScanCommand(service.NewScanServiceWithHistory(history)))
+
+	_, _, err = executeCommandWithStreams(root, "scan", testRepo, "--format", "json", "--security-scan=false")
+	require.NoError(t, err)
+	records, err := history.List(root.Context())
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Equal(t, filepath.Base(testRepo), records[0].Repository)
+	assert.Equal(t, localhistory.OutcomeCompleted, records[0].Outcome)
+	assert.Positive(t, records[0].Summary.Findings)
 }
 
 func TestScanCmd_QualityGate(t *testing.T) {

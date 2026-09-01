@@ -312,6 +312,7 @@ func decodeMCPOutput(t *testing.T, result *mcp.CallToolResult) mcpserver.ScanRep
 func runCLIScan(t *testing.T, binary, repository string, maxComplexity int) []models.TechnicalDebtIssue {
 	t.Helper()
 	cmd := exec.Command(binary, "scan", repository, "--format=json", "--security-scan=false", "--max-complexity="+strconv.Itoa(maxComplexity))
+	cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "XDG_CONFIG_HOME="+t.TempDir(), "AppData="+t.TempDir())
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()

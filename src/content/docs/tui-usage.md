@@ -99,7 +99,9 @@ Once scanning completes, the view expands into a full master-detail layout.
 *The results view. The top pane lists findings by severity; the bottom pane shows the analyzer metadata and threshold-aware message for the selected finding.*
 
 Press `Esc` to return to the command bar. Completed results are added to the
-current TUI session's history and are discarded when DebtDrone exits.
+current TUI session's history. A privacy-conscious summary is also written to
+the bounded local store, but full finding details are discarded when DebtDrone
+exits.
 
 ---
 
@@ -122,8 +124,8 @@ by the live scan view.
 
 :::tip[Spotting trends]
 Run a scan before and after a local refactor, then inspect each result from
-`/history`. The current view opens one result at a time and does not persist
-either result across TUI restarts.
+`/history`. The current browser opens one result at a time and does not reload
+persisted summaries or full results across TUI restarts.
 :::
 
 ---

@@ -33,7 +33,8 @@ Running without a command opens the interactive TUI in the current directory.
 
 :::caution[Current persistence limitations]
 The current release does not load `.debtdrone.yaml`, persist values supplied to
-`config set`, or persist headless scan history. Use `scan` flags for automation.
+`config set`, or expose persisted scan summaries through `debtdrone history`.
+Use `scan` flags for automation.
 :::
 
 ## `debtdrone scan`

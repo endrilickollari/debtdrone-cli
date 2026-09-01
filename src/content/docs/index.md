@@ -27,8 +27,9 @@ scan workflow that does not require Trivy.
 ### Explore a repository locally
 
 Launch `debtdrone` from a repository root, enter `/scan`, and inspect findings
-in the master-detail TUI. History and settings are held only for the current
-TUI process.
+in the master-detail TUI. The current history browser and settings remain
+session-only, while completed scan summaries are persisted in the bounded
+local history store.
 
 [Use the interactive TUI →](./tui-usage/)
 
@@ -78,6 +79,7 @@ Use these when you already know the outcome you need.
 Reference pages describe the exact current interface and reusable APIs.
 
 - [Command reference](./command-reference/)
+- [Local history storage](./history-storage/)
 - [Coverage execution for Go consumers](./scanner-coverage/)
 
 ### Concepts
@@ -100,7 +102,9 @@ Concept pages explain boundaries and design decisions.
   schema and precedence resolver are defined but not yet connected to commands.
 - `.debtdrone.yaml` is generated as a preview but is not loaded by scans.
 - `config set` does not persist changes.
-- Headless `history` returns demonstration entries; TUI history is session-only.
+- Headless and TUI scans write bounded local history summaries. Headless
+  `history` still returns demonstration entries, the TUI browser remains
+  session-only, and MCP scans are not connected to the store yet.
 - Trivy security analysis is optional and can be disabled with
   `--security-scan=false`.
 - The MCP server is local, stdio-only, read-only, and restricted to an explicit

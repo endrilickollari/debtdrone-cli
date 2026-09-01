@@ -23,7 +23,9 @@ Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically
 ### 🎨 The Interactive TUI (For Humans)
 Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
 * **Master-Detail Explorer:** Navigate hundreds of issues effortlessly without text truncation.
-* **Session History:** Revisit scans completed during the current TUI session.
+* **Privacy-Conscious History:** Completed headless and TUI scans persist bounded
+  summary metadata locally; the current TUI browser still displays only scans
+  from its active session.
 * **Inline Configuration:** Modify thresholds and rules directly within the terminal—no need to touch Vim.
 * **Seamless Updates:** Built-in auto-updater with changelog modals (`/update`).
 
