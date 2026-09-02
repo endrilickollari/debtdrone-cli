@@ -28,13 +28,12 @@ Running without a command opens the interactive TUI in the current directory.
 | `init` | Generate a preview `.debtdrone.yaml` file |
 | `config list` | Print static configuration defaults |
 | `config set [key] [value]` | Compatibility placeholder; does not persist changes |
-| `history` | Print demonstration history entries |
+| `history [command]` | Inspect and manage bounded local scan summaries |
 | `completion` | Generate shell-completion scripts |
 
 :::caution[Current persistence limitations]
-The current release does not load `.debtdrone.yaml`, persist values supplied to
-`config set`, or expose persisted scan summaries through `debtdrone history`.
-Use `scan` flags for automation.
+The current release does not load `.debtdrone.yaml` or persist values supplied
+to `config set`. Use `scan` flags for automation.
 :::
 
 ## `debtdrone scan`
@@ -116,15 +115,38 @@ does not validate the key, change a scan, or write a configuration file.
 
 ```text
 debtdrone history [flags]
+debtdrone history list [flags]
+debtdrone history show <id> [flags]
+debtdrone history delete <id>
+debtdrone history clear [--force]
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--format string` | `text` | Select `text` or `json` output |
-| `--limit int` | `10` | Limit the number of returned entries |
+Running `debtdrone history` without a subcommand is equivalent to `history
+list`, preserving the original command shape.
 
-The current command returns demonstration data generated at invocation time.
-It is not a persistent record of prior headless or TUI scans.
+| List flag | Default | Description |
+|---|---|---|
+| `-f`, `--format string` | `text` | Select `text` or `json` output |
+| `--limit int` | `10` | Return between 1 and 200 newest entries |
+
+`history list` returns newest-first summaries. Text mode reports an explicit
+empty state; JSON mode returns `[]`, making it safe for scripts. Each entry
+includes its stable UUID, UTC timestamps, repository display name, outcome,
+severity counts, technical-debt hours, warnings, and analyzer failures.
+
+`history show <id>` renders one complete stored summary and supports
+`--format text|json`. `history delete <id>` removes only that record. Missing or
+invalid IDs return a non-zero exit with an actionable error.
+
+`history clear` prompts you to type `yes` before removing all summaries. Scripts
+must pass `--force` to skip the prompt:
+
+```bash
+debtdrone history clear --force
+```
+
+Corrupt or incompatible stores are never overwritten. The command reports the
+history path and recovery guidance instead.
 
 ## `debtdrone completion`
 

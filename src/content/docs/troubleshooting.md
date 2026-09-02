@@ -89,13 +89,16 @@ Pass scan settings as flags instead:
 debtdrone scan . --max-complexity=12 --fail-on=high
 ```
 
-## `history` does not show a previous run
+## `history` reports a corrupt or incompatible store
 
-The headless `debtdrone history` command currently returns demonstration data.
-The TUI history browser also shows only scans completed during the current
-process. Completed scan summaries are persisted in the
-[local history store](../history-storage/), but the history command and TUI
-browser do not read that store yet.
+DebtDrone refuses to overwrite malformed history or a schema version it cannot
+read. The error identifies the local `history.json` path and whether you should
+upgrade DebtDrone or move the file aside. Preserve the original file when you
+may need to inspect or migrate its records later.
+
+The TUI history browser still shows only scans completed during the current
+process. Use `debtdrone history list` to inspect summaries persisted by earlier
+headless or TUI scans.
 
 ## The TUI updater cannot replace the binary
 

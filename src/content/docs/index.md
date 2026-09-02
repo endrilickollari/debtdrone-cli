@@ -103,7 +103,7 @@ Concept pages explain boundaries and design decisions.
 - `.debtdrone.yaml` is generated as a preview but is not loaded by scans.
 - `config set` does not persist changes.
 - Headless and TUI scans write bounded local history summaries. Headless
-  `history` still returns demonstration entries, the TUI browser remains
+  history commands can inspect and remove them; the TUI browser remains
   session-only, and MCP scans are not connected to the store yet.
 - Trivy security analysis is optional and can be disabled with
   `--security-scan=false`.
