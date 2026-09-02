@@ -36,6 +36,12 @@ func TestScanServiceCoverageDoesNotEnableRepositoryExecution(t *testing.T) {
 	assert.Nil(t, captured.Coverage.IsolatedExecutor)
 }
 
+func TestNewScanServiceHonorsHistoryPersistenceOptOut(t *testing.T) {
+	service := NewScanServiceWithHistoryEnabled(false)
+	assert.Nil(t, service.history)
+	assert.NotNil(t, service.scan)
+}
+
 func TestScanServiceRecordsCompletedAndPartialScans(t *testing.T) {
 	now := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
 	tests := []struct {

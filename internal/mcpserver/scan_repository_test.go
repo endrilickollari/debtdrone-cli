@@ -6,11 +6,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localhistory"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 	"github.com/endrilickollari/debtdrone-cli/v2/scanner"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -58,7 +62,7 @@ func callScanRepository(t *testing.T, session *mcp.ClientSession, arguments map[
 	return result, output
 }
 
-func TestScanRepositoryToolAdvertisesExplicitReadOnlySchema(t *testing.T) {
+func TestScanRepositoryToolAdvertisesNonDestructiveSchema(t *testing.T) {
 	server := newServer(t.TempDir(), "test", func(context.Context, string, scanner.Options) (scanner.Report, error) {
 		return scanner.Report{}, nil
 	})
@@ -71,8 +75,8 @@ func TestScanRepositoryToolAdvertisesExplicitReadOnlySchema(t *testing.T) {
 	assert.Equal(t, scanRepositoryToolName, tool.Name)
 	assert.Contains(t, tool.Description, "at most one scan at a time")
 	require.NotNil(t, tool.Annotations)
-	assert.True(t, tool.Annotations.ReadOnlyHint)
-	assert.True(t, tool.Annotations.IdempotentHint)
+	assert.False(t, tool.Annotations.ReadOnlyHint)
+	assert.False(t, tool.Annotations.IdempotentHint)
 	require.NotNil(t, tool.Annotations.DestructiveHint)
 	assert.False(t, *tool.Annotations.DestructiveHint)
 	require.NotNil(t, tool.Annotations.OpenWorldHint)
@@ -178,6 +182,61 @@ func TestScanRepositoryToolUsesCLIDefaults(t *testing.T) {
 	assert.True(t, capturedOptions.Security.Enabled)
 	assert.False(t, capturedOptions.Coverage.Enabled)
 	assert.Equal(t, defaultMaxFindings, output.Limits.MaxFindings)
+}
+
+func TestScanRepositoryToolUsesResolvedDefaultsAndExplicitInputPrecedence(t *testing.T) {
+	values := localconfig.Defaults()
+	values.MaxComplexity = 31
+	values.SecurityScan = false
+	values.Coverage = true
+	values.HistoryEnabled = false
+
+	var captured service.ScanOptions
+	server := newServerWithRunner(t.TempDir(), "test", values, func(_ context.Context, _ string, options service.ScanOptions, _ func(service.ScanProgress)) (scanner.Report, error) {
+		captured = options
+		return scanner.Report{}, nil
+	})
+	session := connectTestClient(t, server)
+
+	result, _ := callScanRepository(t, session, nil)
+	assert.False(t, result.IsError)
+	assert.Equal(t, service.ScanOptions{MaxComplexity: 31, SecurityScan: false, Coverage: true}, captured)
+
+	result, _ = callScanRepository(t, session, map[string]any{
+		"max_complexity": 42,
+		"security_scan":  true,
+		"coverage":       false,
+	})
+	assert.False(t, result.IsError)
+	assert.Equal(t, service.ScanOptions{MaxComplexity: 42, SecurityScan: true, Coverage: false}, captured)
+}
+
+func TestConfiguredMCPScanHonorsHistoryPersistenceOptOut(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(strconv.FormatBool(enabled), func(t *testing.T) {
+			historyPath := isolateUserHistoryPath(t)
+			repository := t.TempDir()
+			values := localconfig.Defaults()
+			values.SecurityScan = false
+			values.HistoryEnabled = enabled
+
+			server := NewConfigured(repository, "test", values)
+			_, _, err := server.scanRepository(context.Background(), nil, ScanRepositoryInput{})
+			require.NoError(t, err)
+
+			if !enabled {
+				_, err := os.Stat(historyPath)
+				assert.ErrorIs(t, err, os.ErrNotExist)
+				return
+			}
+			store, err := localhistory.New(historyPath)
+			require.NoError(t, err)
+			records, err := store.List(context.Background())
+			require.NoError(t, err)
+			require.Len(t, records, 1)
+			assert.Equal(t, localhistory.OutcomeCompleted, records[0].Outcome)
+		})
+	}
 }
 
 func TestScanRepositoryToolPreservesExplicitlyDisabledSecurityScan(t *testing.T) {
@@ -546,7 +605,9 @@ func classify(value int) int {
 `
 	require.NoError(t, os.WriteFile(filepath.Join(repository, "complex.go"), []byte(source), 0o600))
 
-	server := New(repository, "test")
+	values := localconfig.Defaults()
+	values.HistoryEnabled = false
+	server := NewConfigured(repository, "test", values)
 	result, output := callScanRepository(t, connectTestClient(t, server), map[string]any{
 		"max_complexity": 3,
 		"security_scan":  false,
@@ -554,7 +615,7 @@ func classify(value int) int {
 	})
 	require.False(t, result.IsError)
 
-	cliResult, err := service.NewScanService().RunDetailed(context.Background(), repository, service.ScanOptions{MaxComplexity: 3}, nil)
+	cliResult, err := service.NewScanServiceWithHistoryEnabled(false).RunDetailed(context.Background(), repository, service.ScanOptions{MaxComplexity: 3}, nil)
 	require.NoError(t, err)
 	require.Equal(t, len(cliResult.Issues), len(output.Findings))
 	for index, issue := range cliResult.Issues {
@@ -568,6 +629,22 @@ func classify(value int) int {
 		assert.Equal(t, issue.FilePath, finding.Location.Path)
 		assert.Equal(t, issue.LineNumber, finding.Location.Line)
 	}
+}
+
+func isolateUserHistoryPath(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	switch runtime.GOOS {
+	case "darwin":
+		t.Setenv("HOME", root)
+	case "windows":
+		t.Setenv("AppData", root)
+	default:
+		t.Setenv("XDG_CONFIG_HOME", root)
+	}
+	path, err := localhistory.DefaultPath()
+	require.NoError(t, err)
+	return path
 }
 
 func mapKeys(values map[string]any) []string {

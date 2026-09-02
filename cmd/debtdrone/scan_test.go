@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/localhistory"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
@@ -14,6 +16,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type capturingScanRunner struct {
+	path    string
+	options service.ScanOptions
+}
+
+func (r *capturingScanRunner) RunDetailed(_ context.Context, path string, options service.ScanOptions, _ func(service.ScanProgress)) (service.ScanResult, error) {
+	r.path = path
+	r.options = options
+	return service.ScanResult{}, nil
+}
 
 func createRootWithScan() *cobra.Command {
 	root := &cobra.Command{Use: "debtdrone"}
@@ -51,6 +64,39 @@ func TestScanCmdRecordsSuccessfulScanHistory(t *testing.T) {
 	assert.Equal(t, filepath.Base(testRepo), records[0].Repository)
 	assert.Equal(t, localhistory.OutcomeCompleted, records[0].Outcome)
 	assert.Positive(t, records[0].Summary.Findings)
+}
+
+func TestScanCommandUsesResolvedConfigurationAndExplicitFlagPrecedence(t *testing.T) {
+	var file localconfig.Overrides
+	require.NoError(t, file.Set(localconfig.KeyOutputFormat, "json"))
+	require.NoError(t, file.Set(localconfig.KeyMaxComplexity, "20"))
+	require.NoError(t, file.Set(localconfig.KeySecurityScan, "false"))
+	require.NoError(t, file.Set(localconfig.KeyCoverage, "true"))
+	require.NoError(t, file.Set(localconfig.KeyHistoryEnabled, "false"))
+
+	runner := &capturingScanRunner{}
+	var historyEnabled bool
+	command := newScanCommandWithResolver(
+		func(flags localconfig.Overrides) (localconfig.Resolved, error) {
+			return localconfig.Resolve(file, map[string]string{"DEBTDRONE_MAX_COMPLEXITY": "30"}, flags)
+		},
+		func(enabled bool) detailedScanRunner {
+			historyEnabled = enabled
+			return runner
+		},
+	)
+	root := &cobra.Command{Use: "debtdrone"}
+	root.AddCommand(command)
+	target := t.TempDir()
+
+	stdout, _, err := executeCommandWithStreams(root, "scan", target, "--max-complexity", "40", "--security-scan=true")
+	require.NoError(t, err)
+	assert.JSONEq(t, "[]", stdout)
+	absoluteTarget, err := filepath.Abs(target)
+	require.NoError(t, err)
+	assert.Equal(t, absoluteTarget, runner.path)
+	assert.Equal(t, service.ScanOptions{MaxComplexity: 40, SecurityScan: true, Coverage: true}, runner.options)
+	assert.False(t, historyEnabled)
 }
 
 func TestScanCmd_QualityGate(t *testing.T) {

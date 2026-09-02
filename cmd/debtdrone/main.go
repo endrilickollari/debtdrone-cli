@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/tui"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/update"
 	"github.com/spf13/cobra"
@@ -62,10 +63,16 @@ For CI/CD pipelines and scripted workflows, use the 'scan' subcommand:
 		SilenceUsage: true,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runAutoUpdate()
+			resolved, err := defaultConfigurationResolver(localconfig.Overrides{})
+			if err != nil {
+				return fmt.Errorf("resolve TUI configuration: %w", err)
+			}
+			if resolved.Values.UpdateChecks {
+				runAutoUpdate()
+			}
 
 			fmt.Println("Starting DebtDrone TUI...")
-			return tui.RunTUI()
+			return tui.RunTUI(resolved.Values)
 		},
 	}
 

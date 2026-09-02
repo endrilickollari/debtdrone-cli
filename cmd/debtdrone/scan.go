@@ -6,19 +6,36 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 	"github.com/spf13/cobra"
 )
 
+type detailedScanRunner interface {
+	RunDetailed(context.Context, string, service.ScanOptions, func(service.ScanProgress)) (service.ScanResult, error)
+}
+
 func newScanCmd() *cobra.Command {
-	return newScanCommand(service.NewScanService())
+	return newScanCommandWithResolver(defaultConfigurationResolver, func(historyEnabled bool) detailedScanRunner {
+		return service.NewScanServiceWithHistoryEnabled(historyEnabled)
+	})
 }
 
 func newScanCommand(svc *service.ScanService) *cobra.Command {
+	return newScanCommandWithResolver(
+		func(flags localconfig.Overrides) (localconfig.Resolved, error) {
+			return localconfig.Resolve(localconfig.Overrides{}, nil, flags)
+		},
+		func(bool) detailedScanRunner { return svc },
+	)
+}
+
+func newScanCommandWithResolver(resolve configurationResolver, newService func(bool) detailedScanRunner) *cobra.Command {
 	var (
 		format        string
 		failOn        string
@@ -34,6 +51,22 @@ func newScanCommand(svc *service.ScanService) *cobra.Command {
 This command is optimized for CI/CD pipelines and automated workflows.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			flags, err := scanFlagOverrides(cmd, format, failOn, maxComplexity, securityScan, coverage)
+			if err != nil {
+				return err
+			}
+			resolved, err := resolve(flags)
+			if err != nil {
+				return fmt.Errorf("resolve scan configuration: %w", err)
+			}
+			if newService == nil {
+				return errors.New("scan service factory is required")
+			}
+			svc := newService(resolved.Values.HistoryEnabled)
+			if svc == nil {
+				return errors.New("scan service is unavailable")
+			}
+
 			targetPath := "."
 			if len(args) > 0 {
 				targetPath = args[0]
@@ -43,11 +76,11 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				return fmt.Errorf("failed to resolve path %q: %w", targetPath, err)
 			}
 
-			ctx := context.WithValue(context.Background(), "isCLI", true)
+			ctx := context.WithValue(cmd.Context(), "isCLI", true)
 			opts := service.ScanOptions{
-				MaxComplexity: maxComplexity,
-				SecurityScan:  securityScan,
-				Coverage:      coverage,
+				MaxComplexity: resolved.Values.MaxComplexity,
+				SecurityScan:  resolved.Values.SecurityScan,
+				Coverage:      resolved.Values.Coverage,
 			}
 
 			result, scanErr := svc.RunDetailed(ctx, absPath, opts, nil)
@@ -59,7 +92,7 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				return fmt.Errorf("scan failed: %w", scanErr)
 			}
 
-			switch strings.ToLower(format) {
+			switch resolved.Values.OutputFormat {
 			case "json":
 				if err := printJSON(cmd, issues); err != nil {
 					return err
@@ -70,7 +103,7 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 				}
 			}
 
-			if failOn != "" {
+			if resolved.Values.FailOn != "none" {
 				severityMap := map[string]int{
 					"critical": 4,
 					"high":     3,
@@ -78,15 +111,15 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 					"low":      1,
 				}
 
-				requestedThreshold, ok := severityMap[strings.ToLower(failOn)]
+				requestedThreshold, ok := severityMap[resolved.Values.FailOn]
 				if !ok {
-					return fmt.Errorf("invalid --fail-on value: %q (valid: critical, high, medium, low)", failOn)
+					return fmt.Errorf("invalid fail-on value: %q (valid: none, critical, high, medium, low)", resolved.Values.FailOn)
 				}
 
 				for _, issue := range issues {
 					if issueSeverity, exists := severityMap[strings.ToLower(issue.Severity)]; exists {
 						if issueSeverity >= requestedThreshold {
-							gateErr := fmt.Errorf("quality gate failed: found issues matching or exceeding severity '%s'", failOn)
+							gateErr := fmt.Errorf("quality gate failed: found issues matching or exceeding severity '%s'", resolved.Values.FailOn)
 							if scanErr != nil {
 								return errors.Join(fmt.Errorf("scan completed with partial results: %w", scanErr), gateErr)
 							}
@@ -110,6 +143,30 @@ This command is optimized for CI/CD pipelines and automated workflows.`,
 	cmd.Flags().BoolVar(&coverage, "coverage", false, "Parse existing coverage artifacts without running repository tests")
 
 	return cmd
+}
+
+func scanFlagOverrides(cmd *cobra.Command, format, failOn string, maxComplexity int, securityScan, coverage bool) (localconfig.Overrides, error) {
+	var overrides localconfig.Overrides
+	values := []struct {
+		flag  string
+		key   localconfig.Key
+		value string
+	}{
+		{"format", localconfig.KeyOutputFormat, format},
+		{"fail-on", localconfig.KeyFailOn, failOn},
+		{"max-complexity", localconfig.KeyMaxComplexity, strconv.Itoa(maxComplexity)},
+		{"security-scan", localconfig.KeySecurityScan, strconv.FormatBool(securityScan)},
+		{"coverage", localconfig.KeyCoverage, strconv.FormatBool(coverage)},
+	}
+	for _, value := range values {
+		if !cmd.Flags().Changed(value.flag) {
+			continue
+		}
+		if err := overrides.Set(value.key, value.value); err != nil {
+			return localconfig.Overrides{}, fmt.Errorf("invalid --%s value: %w", value.flag, err)
+		}
+	}
+	return overrides, nil
 }
 
 func printJSON(cmd *cobra.Command, issues []models.TechnicalDebtIssue) error {

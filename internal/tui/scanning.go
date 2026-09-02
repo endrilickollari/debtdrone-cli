@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
+	"github.com/endrilickollari/debtdrone-cli/v2/scanner"
 	"github.com/google/uuid"
 )
 
@@ -23,9 +25,16 @@ type scanProgressMsg struct {
 }
 
 type scanCompleteMsg struct {
-	path   string
-	issues []models.TechnicalDebtIssue
-	err    error
+	path     string
+	issues   []models.TechnicalDebtIssue
+	warnings []scanner.Warning
+	err      error
+}
+
+type scanDisplayOptions struct {
+	outputFormat    string
+	showLineNumbers bool
+	maxResults      int
 }
 
 var spinnerChars = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -34,18 +43,14 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second/10, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-func startScan(path string, maxComplexity int, securityScan bool, progressChan chan tea.Msg) tea.Cmd {
+func startScan(path string, options service.ScanOptions, historyEnabled bool, progressChan chan tea.Msg) tea.Cmd {
 	log.SetOutput(io.Discard)
 	return func() tea.Msg {
 		go func() {
-			svc := service.NewScanService()
+			svc := service.NewScanServiceWithHistoryEnabled(historyEnabled)
 			ctx := context.WithValue(context.Background(), "isCLI", true)
-			opts := service.ScanOptions{
-				MaxComplexity: maxComplexity,
-				SecurityScan:  securityScan,
-			}
 
-			issues, err := svc.Run(ctx, path, opts, func(p service.ScanProgress) {
+			result, err := svc.RunDetailed(ctx, path, options, func(p service.ScanProgress) {
 				progressChan <- scanProgressMsg{
 					Task:     "Running " + p.AnalyzerName + "...",
 					Progress: float64(p.Index) / float64(p.Total),
@@ -55,14 +60,14 @@ func startScan(path string, maxComplexity int, securityScan bool, progressChan c
 
 			log.SetOutput(os.Stderr)
 
-			if err != nil && (!service.IsPartialFailure(err) || len(issues) == 0) {
-				progressChan <- scanCompleteMsg{path: path, issues: issues, err: err}
+			if err != nil && (!service.IsPartialFailure(err) || len(result.Issues) == 0) {
+				progressChan <- scanCompleteMsg{path: path, issues: result.Issues, warnings: result.Warnings, err: err}
 				return
 			}
 
 			progressChan <- scanProgressMsg{Task: "Finalizing results...", Progress: 1.0}
 			time.Sleep(500 * time.Millisecond)
-			progressChan <- scanCompleteMsg{path: path, issues: issues, err: err}
+			progressChan <- scanCompleteMsg{path: path, issues: result.Issues, warnings: result.Warnings, err: err}
 		}()
 		return nil
 	}
@@ -85,6 +90,7 @@ type ScanModel struct {
 	spinnerFrame int
 	scanChan     chan tea.Msg
 	outputFormat string
+	display      scanDisplayOptions
 
 	err     error
 	warning error
@@ -104,20 +110,21 @@ func newScanModel() *ScanModel {
 }
 
 // Start begins a new repository scan.
-func (m *ScanModel) Start(path string, maxComplexity int, securityScan bool, outputFormat string) tea.Cmd {
+func (m *ScanModel) Start(path string, options service.ScanOptions, display scanDisplayOptions, historyEnabled bool) tea.Cmd {
 	m.phase = scanRunning
 	m.scanPath = path
 	m.scanTask = "Initializing scan..."
 	m.scanProgress = 0
 	m.spinnerFrame = 0
-	m.outputFormat = outputFormat
+	m.outputFormat = display.outputFormat
+	m.display = display
 	m.err = nil
 	m.warning = nil
 	m.issues = nil
 	m.scanChan = make(chan tea.Msg, 10)
 
 	return tea.Batch(
-		startScan(path, maxComplexity, securityScan, m.scanChan),
+		startScan(path, options, historyEnabled, m.scanChan),
 		m.listenForScanProgress(),
 		tickCmd(),
 	)
@@ -183,12 +190,16 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.warning = msg.err
-		m.issues = msg.issues
+		for _, warning := range msg.warnings {
+			m.warning = errors.Join(m.warning, fmt.Errorf("%s: %s", warning.AnalyzerID, warning.Message))
+		}
+		displayIssues := prepareDisplayIssues(msg.issues, m.display)
+		m.issues = displayIssues
 		listH, detailH := splitHeight(m.height)
-		m.list = newIssueList(msg.issues, m.width, listH)
+		m.list = newIssueList(displayIssues, m.width, listH)
 
 		if m.outputFormat == "json" {
-			jsonData, _ := json.MarshalIndent(msg.issues, "", "  ")
+			jsonData, _ := json.MarshalIndent(displayIssues, "", "  ")
 			m.detail = issueViewport{height: m.height - 4, width: m.width - 4}
 			m.detail.setContent(string(jsonData))
 		} else {
@@ -210,7 +221,7 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		run.CompletedAt = &now
 		run.RepositoryName = &msg.path
 
-		entry := historyEntry{run: run, path: msg.path, issues: msg.issues}
+		entry := historyEntry{run: run, path: msg.path, issues: displayIssues}
 		return m, func() tea.Msg { return ScanFinishedMsg{Entry: entry} }
 
 	case tea.KeyPressMsg:
@@ -218,6 +229,21 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func prepareDisplayIssues(issues []models.TechnicalDebtIssue, options scanDisplayOptions) []models.TechnicalDebtIssue {
+	limit := len(issues)
+	if options.maxResults > 0 && options.maxResults < limit {
+		limit = options.maxResults
+	}
+	result := append([]models.TechnicalDebtIssue(nil), issues[:limit]...)
+	if !options.showLineNumbers {
+		for index := range result {
+			result[index].LineNumber = nil
+			result[index].ColumnNumber = nil
+		}
+	}
+	return result
 }
 
 // handleKey processes keyboard input. The behaviour differs depending on the

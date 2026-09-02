@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ func TestRootCommandAdvertisesMCPServer(t *testing.T) {
 }
 
 func TestMCPCommandRequiresRoot(t *testing.T) {
-	root := rootWithMCP(func(context.Context, string, string) error {
+	root := rootWithMCP(func(context.Context, string, string, localconfig.Values) error {
 		t.Fatal("runner must not be called when --root is missing")
 		return nil
 	})
@@ -48,7 +49,7 @@ func TestMCPCommandValidatesAndResolvesRoot(t *testing.T) {
 	require.NoError(t, err)
 
 	var receivedRoot, receivedVersion string
-	runner := func(_ context.Context, root, version string) error {
+	runner := func(_ context.Context, root, version string, _ localconfig.Values) error {
 		receivedRoot = root
 		receivedVersion = version
 		return nil
@@ -63,6 +64,38 @@ func TestMCPCommandValidatesAndResolvesRoot(t *testing.T) {
 	assert.Empty(t, stderr)
 	assert.Equal(t, filepath.Clean(canonicalRoot), receivedRoot)
 	assert.Equal(t, "test-version", receivedVersion)
+}
+
+func TestMCPCommandUsesResolvedSettingsWithoutChangingRootBoundary(t *testing.T) {
+	repositoryRoot := t.TempDir()
+	values := localconfig.Defaults()
+	values.MaxComplexity = 41
+	values.SecurityScan = false
+	values.Coverage = true
+	values.HistoryEnabled = false
+
+	var receivedRoot string
+	var receivedValues localconfig.Values
+	command := newMCPCommandWithResolver(
+		"test-version",
+		func(_ context.Context, root, _ string, config localconfig.Values) error {
+			receivedRoot = root
+			receivedValues = config
+			return nil
+		},
+		func(localconfig.Overrides) (localconfig.Resolved, error) {
+			return localconfig.Resolved{Values: values}, nil
+		},
+	)
+	root := &cobra.Command{Use: "debtdrone", SilenceUsage: true}
+	root.AddCommand(command)
+
+	_, _, err := executeCommandWithStreams(root, "mcp", "--root", repositoryRoot)
+	require.NoError(t, err)
+	canonicalRoot, err := filepath.EvalSymlinks(repositoryRoot)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Clean(canonicalRoot), receivedRoot)
+	assert.Equal(t, values, receivedValues)
 }
 
 func TestMCPCommandCanonicalizesSymlinkRoot(t *testing.T) {
@@ -104,7 +137,7 @@ func TestMCPCommandRejectsInvalidRoots(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			root := rootWithMCP(func(context.Context, string, string) error {
+			root := rootWithMCP(func(context.Context, string, string, localconfig.Values) error {
 				t.Fatal("runner must not be called for an invalid root")
 				return nil
 			})
@@ -118,7 +151,7 @@ func TestMCPCommandRejectsInvalidRoots(t *testing.T) {
 
 func TestMCPCommandStopsCleanlyWhenContextIsCancelled(t *testing.T) {
 	started := make(chan struct{})
-	runner := func(ctx context.Context, _, _ string) error {
+	runner := func(ctx context.Context, _, _ string, _ localconfig.Values) error {
 		close(started)
 		<-ctx.Done()
 		return ctx.Err()
@@ -150,7 +183,7 @@ func TestMCPCommandStopsCleanlyWhenContextIsCancelled(t *testing.T) {
 
 func TestMCPCommandReturnsServerErrors(t *testing.T) {
 	runnerErr := errors.New("transport failed")
-	root := rootWithMCP(func(context.Context, string, string) error { return runnerErr })
+	root := rootWithMCP(func(context.Context, string, string, localconfig.Values) error { return runnerErr })
 
 	_, _, err := executeCommandWithStreams(root, "mcp", "--root", t.TempDir())
 	require.Error(t, err)

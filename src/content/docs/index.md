@@ -27,9 +27,9 @@ scan workflow that does not require Trivy.
 ### Explore a repository locally
 
 Launch `debtdrone` from a repository root, enter `/scan`, and inspect findings
-in the master-detail TUI. The current history browser and settings remain
-session-only, while completed scan summaries are persisted in the bounded
-local history store.
+in the master-detail TUI. Settings start from the shared local configuration and
+remain editable for the session, while completed scan summaries are persisted
+in the bounded local history store unless persistence is disabled.
 
 [Use the interactive TUI →](./tui-usage/)
 
@@ -42,10 +42,11 @@ matching severity should return a non-zero status in CI.
 
 ### Call DebtDrone from an agent
 
-Connect Codex or Claude Code to the local, read-only MCP server. The
-`scan_repository` tool uses the same scanner as the CLI and stays within the
-repository root you configure. MCP is currently available on `main` and
-will enter tagged distribution with the next approved release.
+Connect Codex or Claude Code to the local, repository-scoped MCP server. The
+`scan_repository` tool uses the same scanner as the CLI, stays within the root
+you configure, and does not modify repository contents. MCP is currently
+available on `main` and will enter tagged distribution with the next approved
+release.
 
 [Connect a coding agent →](./mcp-and-agents/)
 
@@ -98,18 +99,18 @@ Concept pages explain boundaries and design decisions.
 
 ## Current capability boundaries
 
-- Headless configuration is supplied through `scan` flags; the versioned local
-  schema and precedence resolver are defined but not yet connected to commands.
+- Headless, MCP, and TUI scans share the versioned local configuration and
+  precedence resolver. Explicit scan flags and MCP inputs remain highest priority.
 - `.debtdrone.yaml` is generated as a preview but is not loaded by scans.
-- User-level config commands persist validated settings, but scans do not apply
-  them until the shared CLI, MCP, and TUI integration lands.
-- Headless and TUI scans write bounded local history summaries. Headless
+- User-level config commands atomically persist validated settings.
+- Headless, MCP, and TUI scans write bounded local history summaries unless
+  `history.enabled` is false. Headless
   history commands can inspect and remove them; the TUI browser remains
-  session-only, and MCP scans are not connected to the store yet.
+  session-only for full finding details.
 - Trivy security analysis is optional and can be disabled with
   `--security-scan=false`.
-- The MCP server is local, stdio-only, read-only, and restricted to an explicit
-  repository root.
+- The MCP server is local, stdio-only, restricted to an explicit repository
+  root, and non-destructive to repository contents.
 
 The documentation calls out these limitations explicitly so examples remain
 safe for scripts, CI systems, and agents.

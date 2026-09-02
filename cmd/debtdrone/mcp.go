@@ -7,32 +7,44 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/mcpserver"
 	"github.com/spf13/cobra"
 )
 
-type mcpRunFunc func(context.Context, string, string) error
+type mcpRunFunc func(context.Context, string, string, localconfig.Values) error
 
 func newMCPCmd() *cobra.Command {
-	return newMCPCommand(version, mcpserver.RunStdio)
+	return newMCPCommandWithResolver(version, mcpserver.RunStdio, defaultConfigurationResolver)
 }
 
 func newMCPCommand(serverVersion string, run mcpRunFunc) *cobra.Command {
+	return newMCPCommandWithResolver(serverVersion, run, func(flags localconfig.Overrides) (localconfig.Resolved, error) {
+		return localconfig.Resolve(localconfig.Overrides{}, nil, flags)
+	})
+}
+
+func newMCPCommandWithResolver(serverVersion string, run mcpRunFunc, resolve configurationResolver) *cobra.Command {
 	var root string
 
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Run the local DebtDrone MCP server over stdio",
-		Long: `Run a read-only Model Context Protocol server over stdin and stdout.
-The configured root defines the repository boundary available to MCP tools.`,
+		Long: `Run a local Model Context Protocol server over stdin and stdout.
+The configured root defines the repository boundary available to MCP tools,
+and scans do not modify repository contents.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			resolvedRoot, err := resolveMCPRoot(root)
 			if err != nil {
 				return err
 			}
+			resolved, err := resolve(localconfig.Overrides{})
+			if err != nil {
+				return fmt.Errorf("resolve MCP configuration: %w", err)
+			}
 
-			err = run(cmd.Context(), resolvedRoot, serverVersion)
+			err = run(cmd.Context(), resolvedRoot, serverVersion, resolved.Values)
 			if errors.Is(err, context.Canceled) && cmd.Context().Err() != nil {
 				return nil
 			}

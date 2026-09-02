@@ -394,8 +394,19 @@ func TestRecordScanValidation(t *testing.T) {
 }
 
 func TestPathInUsesUserConfigDirectory(t *testing.T) {
-	root := filepath.Join("Users", "developer", "Library", "Application Support")
-	assert.Equal(t, filepath.Join(root, "debtdrone", "history.json"), PathIn(root))
+	tests := []struct {
+		name string
+		root string
+	}{
+		{name: "Linux XDG", root: filepath.Join("home", "developer", ".config")},
+		{name: "macOS Application Support", root: filepath.Join("Users", "developer", "Library", "Application Support")},
+		{name: "Windows AppData", root: filepath.Join("Users", "developer", "AppData", "Roaming")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, filepath.Join(test.root, "debtdrone", "history.json"), PathIn(test.root))
+		})
+	}
 }
 
 func validInput(repository string, completedAt time.Time) RecordInput {

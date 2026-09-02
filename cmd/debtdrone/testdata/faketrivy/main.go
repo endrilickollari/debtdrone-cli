@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	marker := os.Getenv("DEBTDRONE_TEST_FAKE_TRIVY_MARKER")
+	marker := os.Getenv("TEST_DEBTDRONE_FAKE_TRIVY_MARKER")
 	if marker == "" {
 		os.Exit(2)
 	}

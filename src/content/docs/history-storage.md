@@ -8,10 +8,10 @@ retaining repository source. The store is the persistence foundation for the
 headless CLI, MCP server, and interactive TUI.
 
 :::note[Integration status]
-The shared scan service records completed and partial headless CLI and TUI
-scans. `debtdrone history` can list, show, delete, and clear those summaries.
-The MCP scan path is not connected yet, and the TUI browser displays only its
-current session until the remaining UI integration lands.
+The shared scan service records completed and partial headless CLI, MCP, and TUI
+scans unless `history.enabled` resolves to `false`. `debtdrone history` can list,
+show, delete, and clear those summaries. The TUI browser keeps full finding
+details for its current session only; its persisted data remains summary-only.
 :::
 
 ## Storage location

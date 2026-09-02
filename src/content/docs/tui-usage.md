@@ -136,24 +136,25 @@ persisted summaries or full results across TUI restarts.
 /config
 ```
 
-The config view presents session settings as a navigable form, organised into
-three sections: **General**, **Quality Gate**, and **Display**. `Output Format`,
-`Max Complexity`, and `Security Scan` affect scans started in the current TUI
-session. The other displayed fields are placeholders and do not currently
-change CLI or TUI behavior.
+The config view presents resolved settings as a navigable form, organised into
+**General**, **Quality Gate**, **Display**, and **Privacy** sections. Values begin
+with the same file and environment precedence used by headless and MCP scans.
+Edits become session overrides for scans started in the current TUI.
 
-![Interactive settings editor showing General, Quality Gate, and Display sections](../../assets/config.png)
+![Interactive DebtDrone settings editor](../../assets/config.png)
 *The Settings editor. Navigate with `j`/`k`, cycle enum values with `←`/`→`, and toggle booleans with `Enter` or `Space`.*
 
 | Section | Setting | Description |
 |---|---|---|
 | **General** | Output Format | `text` or `json` for TUI result presentation |
-| **General** | Auto-Update Checks | Placeholder; editing does not change startup checks |
-| **Quality Gate** | Fail on Severity | Placeholder; TUI scans do not enforce an exit threshold |
+| **General** | Auto-Update Checks | The resolved launch value controls the automatic startup check; changing it after launch does not rerun the check |
+| **Quality Gate** | Fail on Severity | Shared value for headless quality gates; TUI scans do not return process-level quality-gate failures |
 | **Quality Gate** | Max Complexity | High cyclomatic complexity threshold per function; critical starts above twice the value (default: `15`) |
 | **Quality Gate** | Security Scan | Run Trivy vulnerability and secret detection |
-| **Display** | Show Line Numbers | Placeholder; editing does not change the results list |
-| **Display** | Max Results | Placeholder; editing does not cap rendered results |
+| **Quality Gate** | Coverage | Parse existing coverage artifacts without running repository tests |
+| **Display** | Show Line Numbers | Include or hide line and column information in rendered results |
+| **Display** | Max Results | Cap findings rendered in the TUI; `0` is unlimited |
+| **Privacy** | History Persistence | Write or skip new privacy-safe local scan summaries |
 
 ### Editing a Value
 
@@ -165,7 +166,8 @@ change CLI or TUI behavior.
 6. Press `Esc` to cancel an edit without saving.
 
 Changes remain in memory for the current TUI process. They are not written to
-`.debtdrone.yaml` and are discarded when DebtDrone exits.
+the user config file or `.debtdrone.yaml` and are discarded when DebtDrone
+exits. Use `debtdrone config set <key> <value>` to persist a setting.
 
 ---
 

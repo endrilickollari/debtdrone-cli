@@ -27,14 +27,14 @@ import (
 const (
 	currentMCPProtocolVersion = "2026-07-28"
 	legacyMCPProtocolVersion  = "2025-11-25"
-	fakeTrivyMarkerEnv        = "DEBTDRONE_TEST_FAKE_TRIVY_MARKER"
+	fakeTrivyMarkerEnv        = "TEST_DEBTDRONE_FAKE_TRIVY_MARKER"
 )
 
 func TestMCPStdioIntegration(t *testing.T) {
 	repositoryRoot := findRepositoryRoot(t)
 	binary := buildDebtdroneBinary(t, repositoryRoot)
 
-	t.Run("initializes and discovers the read-only tool", func(t *testing.T) {
+	t.Run("initializes and discovers the non-destructive tool", func(t *testing.T) {
 		session := connectMCPSubprocess(t, binary, repositoryRoot, nil)
 
 		initialized := session.InitializeResult()
@@ -53,8 +53,8 @@ func TestMCPStdioIntegration(t *testing.T) {
 		tool := result.Tools[0]
 		assert.Equal(t, "scan_repository", tool.Name)
 		require.NotNil(t, tool.Annotations)
-		assert.True(t, tool.Annotations.ReadOnlyHint)
-		assert.True(t, tool.Annotations.IdempotentHint)
+		assert.False(t, tool.Annotations.ReadOnlyHint)
+		assert.False(t, tool.Annotations.IdempotentHint)
 	})
 
 	t.Run("recovers after malformed and rejected requests", func(t *testing.T) {
