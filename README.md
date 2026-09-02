@@ -35,6 +35,7 @@ Built on [Cobra](https://github.com/spf13/cobra).
 * **Structured Output:** Export results to standard Text tables or machine-readable JSON (`--format=json`).
 * **Deterministic Execution:** Bypasses all interactive prompts to ensure pipelines never hang.
 * **Explicit Scan Controls:** Configure each run with flags such as `--fail-on`, `--max-complexity`, and `--security-scan`.
+* **Local History Commands:** List, inspect, delete, or explicitly clear bounded scan summaries without storing source contents.
 
 ### 🔌 MCP Server (For Coding Agents)
 * **Supported Clients:** Connect Codex or Claude Code through local stdio.
@@ -105,6 +106,13 @@ debtdrone scan ./my-project
 Output results as JSON for pipeline parsing:
 ```bash
 debtdrone scan ./my-project --format=json
+```
+
+Inspect the most recent privacy-conscious scan summaries:
+
+```bash
+debtdrone history list
+debtdrone history show <id> --format=json
 ```
 
 ### The Quality Gate (Failing Builds)

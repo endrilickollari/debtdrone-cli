@@ -1,21 +1,20 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
 
-func createRootWithConfigAndHistory() *cobra.Command {
+func createRootWithConfig() *cobra.Command {
 	root := &cobra.Command{Use: "debtdrone"}
-	root.AddCommand(newConfigCmd(), newHistoryCmd())
+	root.AddCommand(newConfigCmd())
 	return root
 }
 
 func TestConfigCmd(t *testing.T) {
-	root := createRootWithConfigAndHistory()
+	root := createRootWithConfig()
 
 	t.Run("config list", func(t *testing.T) {
 		output, err := executeCommand(root, "config", "list")
@@ -43,35 +42,6 @@ func TestConfigCmd(t *testing.T) {
 
 		if !strings.Contains(output, "Successfully set") {
 			t.Errorf("Success message not found in output: %s", output)
-		}
-	})
-}
-
-func TestHistoryCmd(t *testing.T) {
-	root := createRootWithConfigAndHistory()
-
-	t.Run("history table output", func(t *testing.T) {
-		output, err := executeCommand(root, "history")
-		if err != nil {
-			t.Fatalf("history failed: %v", err)
-		}
-
-		headers := []string{"DATE", "REPOSITORY", "ISSUES"}
-		for _, h := range headers {
-			if !strings.Contains(output, h) {
-				t.Errorf("history table missing header %q", h)
-			}
-		}
-	})
-
-	t.Run("history json output", func(t *testing.T) {
-		output, err := executeCommand(root, "history", "--format", "json")
-		if err != nil {
-			t.Fatalf("history json failed: %v", err)
-		}
-
-		if !json.Valid([]byte(output)) {
-			t.Errorf("history json output invalid: %s", output)
 		}
 	})
 }

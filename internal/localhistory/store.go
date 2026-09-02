@@ -410,7 +410,7 @@ func (s *Store) load() (historyFile, bool, error) {
 
 	decoded, err := decodeHistory(data)
 	if err != nil {
-		return historyFile{}, true, fmt.Errorf("invalid history file %q: %w", s.path, err)
+		return historyFile{}, true, fmt.Errorf("invalid history file %q: %w; move it aside and rerun DebtDrone", s.path, err)
 	}
 	return decoded, true, nil
 }

@@ -9,9 +9,9 @@ headless CLI, MCP server, and interactive TUI.
 
 :::note[Integration status]
 The shared scan service records completed and partial headless CLI and TUI
-scans. The MCP scan path is not connected yet. `debtdrone history` still
-displays demonstration entries, and the TUI browser displays only its current
-session until the history command and UI integration lands.
+scans. `debtdrone history` can list, show, delete, and clear those summaries.
+The MCP scan path is not connected yet, and the TUI browser displays only its
+current session until the remaining UI integration lands.
 :::
 
 ## Storage location
@@ -124,3 +124,17 @@ aside. Corrupt or incompatible data is never silently overwritten.
 To recover manually, move `history.json` to a backup location and run DebtDrone
 again. Keep the backup if it contains records you may want to inspect or
 migrate later.
+
+## Manage stored summaries
+
+Use the headless history commands to inspect or remove records:
+
+```bash
+debtdrone history list --format=json --limit=10
+debtdrone history show <id>
+debtdrone history delete <id>
+debtdrone history clear
+```
+
+Clearing all records requires typing `yes`. Non-interactive callers must opt in
+explicitly with `debtdrone history clear --force`.
