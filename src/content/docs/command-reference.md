@@ -26,14 +26,13 @@ Running without a command opens the interactive TUI in the current directory.
 | `scan [path]` | Run a headless technical-debt scan |
 | `mcp --root <path>` | Run the local, read-only MCP server over stdio |
 | `init` | Generate a preview `.debtdrone.yaml` file |
-| `config list` | Print static configuration defaults |
-| `config set [key] [value]` | Compatibility placeholder; does not persist changes |
+| `config [command]` | Inspect and manage user-level configuration |
 | `history [command]` | Inspect and manage bounded local scan summaries |
 | `completion` | Generate shell-completion scripts |
 
 :::caution[Current persistence limitations]
-The current release does not load `.debtdrone.yaml` or persist values supplied
-to `config set`. Use `scan` flags for automation.
+The current release does not load `.debtdrone.yaml` or apply the user-level
+configuration to scans yet. Use `scan` flags for automation.
 :::
 
 ## `debtdrone scan`
@@ -102,14 +101,22 @@ the scanner does not load it in the current release.
 
 ```text
 debtdrone config list
-debtdrone config set [key] [value]
+debtdrone config get <key>
+debtdrone config set <key> <value>
+debtdrone config unset <key>
 ```
 
-`config list` prints a text table of static defaults. It has no JSON flag and
-does not read `.debtdrone.yaml`.
+`config list` prints every effective value, type, source, and description. It
+supports `--format text|json`. Sources are `default`, `config_file`, or
+`environment` until scan flags are routed through the shared resolver.
 
-`config set` requires exactly two arguments and prints an acknowledgement. It
-does not validate the key, change a scan, or write a configuration file.
+`config get <key>` prints the effective value and supports `--format text|json`.
+`config set` validates and atomically persists one supported dotted key.
+`config unset` removes only its config-file override. Unknown keys and invalid
+values fail without modifying the file.
+
+These commands manage the OS-native user configuration file, not the legacy
+repository `.debtdrone.yaml` template.
 
 ## `debtdrone history`
 

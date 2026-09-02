@@ -101,7 +101,8 @@ Concept pages explain boundaries and design decisions.
 - Headless configuration is supplied through `scan` flags; the versioned local
   schema and precedence resolver are defined but not yet connected to commands.
 - `.debtdrone.yaml` is generated as a preview but is not loaded by scans.
-- `config set` does not persist changes.
+- User-level config commands persist validated settings, but scans do not apply
+  them until the shared CLI, MCP, and TUI integration lands.
 - Headless and TUI scans write bounded local history summaries. Headless
   history commands can inspect and remove them; the TUI browser remains
   session-only, and MCP scans are not connected to the store yet.

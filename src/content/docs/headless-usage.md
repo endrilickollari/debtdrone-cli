@@ -167,8 +167,9 @@ produce warnings on stderr.
 
 - `debtdrone init` creates a `.debtdrone.yaml` template, but scans do not load
   that file yet.
-- `debtdrone config list` prints static defaults; `config set` does not persist
-  changes yet.
+- `debtdrone config list`, `get`, `set`, and `unset` manage the user-level
+  versioned file. Scans do not apply those settings until the remaining shared
+  resolver integration lands.
 - `debtdrone history list` returns bounded persisted summaries in text or JSON.
   Use `history show <id>`, `history delete <id>`, and the confirmed
   `history clear` command to inspect or manage them.

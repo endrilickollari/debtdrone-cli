@@ -136,11 +136,18 @@ flags:
 debtdrone scan . --max-complexity=15 --fail-on=high
 ```
 
-`debtdrone config list` displays static defaults, and `config set` does not
-persist changes in the current release. The shared versioned local schema,
-OS-native storage paths, strict validation, and precedence contract are
-documented in the [configuration guide](https://cli.debtdrone.net/configuration/)
-ahead of command integration.
+Manage the versioned user-level configuration with `config list`, `get`, `set`,
+and `unset`:
+
+```bash
+debtdrone config set scan.max_complexity 20
+debtdrone config list
+```
+
+These values are persisted safely but are not applied to scans until the shared
+CLI, MCP, and TUI integration lands. See the
+[configuration guide](https://cli.debtdrone.net/configuration/) for storage,
+validation, and precedence details.
 
 ---
 
