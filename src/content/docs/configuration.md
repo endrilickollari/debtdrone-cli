@@ -17,10 +17,10 @@ value. Explicit `false` and `0` values are preserved; they are not treated as
 missing.
 
 :::note[Integration status]
-The versioned schema and precedence resolver are available as the Sprint 3
-foundation. The current `scan`, `config`, MCP, and TUI entry points have not yet
-been routed through it. Until that integration lands, use scan flags for
-headless behavior. `config set` remains a non-persistent compatibility command.
+The `config list`, `get`, `set`, and `unset` commands manage this user-level
+file. The current scan, MCP, and TUI entry points have not yet been routed
+through the resolver, so continue using scan flags for headless behavior until
+that integration lands.
 :::
 
 ## Local configuration path
@@ -37,6 +37,12 @@ directory instead of hard-coding a home-directory layout.
 The file is optional. A missing file contributes no overrides, so built-in
 defaults still resolve normally. Read failures and malformed files are returned
 to the caller instead of being silently ignored.
+
+Writes use an owner-only temporary file, flush it, and atomically replace the
+previous file. A cross-process lock prevents concurrent commands from losing
+independent updates. Existing application-directory permissions are preserved;
+a missing directory and new configuration file are created with owner-only
+permissions where Unix permission bits are available.
 
 ## Version 1 schema
 
@@ -119,6 +125,12 @@ Configuration parsing is intentionally strict:
 - multiple YAML documents in one file are rejected;
 - read errors include the configuration path.
 
+`set` and `unset` validate the complete current file before changing it. They
+preserve YAML comments on retained settings. Unknown current-version fields and
+newer schema versions are rejected rather than silently discarded; the error
+explains whether to fix, upgrade, or move the file aside. Temporary-write or
+replacement failures leave the previous file intact.
+
 DebtDrone currently supports schema version `1`. A file without `version` is
 invalid. An older version requests migration; a version newer than the running
 binary fails with an instruction to upgrade DebtDrone. A newer file is never
@@ -145,16 +157,32 @@ skips that analyzer. When Trivy starts but cannot complete, the CLI prints the
 available findings and returns a partial-scan error.
 :::
 
-## Repository template and current commands
+## Manage persistent values
+
+List every effective value together with its type and winning source:
+
+```bash
+debtdrone config list
+debtdrone config list --format=json
+```
+
+Inspect or update one supported dotted key:
+
+```bash
+debtdrone config get scan.max_complexity
+debtdrone config set scan.max_complexity 20
+debtdrone config unset scan.max_complexity
+```
+
+`unset` removes only the config-file override. A later `get` may therefore show
+an environment value or built-in default. Commands never print raw environment
+entries; only validated effective values from the supported allowlist appear.
+
+## Repository template
 
 `debtdrone init` still generates the legacy `.debtdrone.yaml` repository
 template. That repository file is not the versioned user configuration above
 and is not loaded by current scans.
-
-`debtdrone config list` still reports its static compatibility values, while
-`debtdrone config set <key> <value>` prints an acknowledgement without writing
-a file. Persistent `list`, `get`, `set`, and `unset` behavior is the next
-configuration implementation step.
 
 For TUI behavior, see
 [Interactive TUI configuration](../tui-usage/#config--interactive-settings-editor).

@@ -130,6 +130,95 @@ func Definitions() []Definition {
 	return append([]Definition(nil), definitions...)
 }
 
+func ParseKey(value string) (Key, error) {
+	key := Key(strings.TrimSpace(value))
+	for _, definition := range definitions {
+		if definition.Key == key {
+			return key, nil
+		}
+	}
+	supported := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		supported = append(supported, string(definition.Key))
+	}
+	return "", fmt.Errorf("unknown configuration key %q; supported keys: %s", value, strings.Join(supported, ", "))
+}
+
+func ParseOverride(key Key, value string) (Overrides, error) {
+	var overrides Overrides
+	if err := setStringValue(&overrides, key, value); err != nil {
+		return Overrides{}, err
+	}
+	return overrides, nil
+}
+
+func Value(values Values, key Key) string {
+	switch key {
+	case KeyOutputFormat:
+		return values.OutputFormat
+	case KeyFailOn:
+		return values.FailOn
+	case KeyMaxComplexity:
+		return strconv.Itoa(values.MaxComplexity)
+	case KeySecurityScan:
+		return strconv.FormatBool(values.SecurityScan)
+	case KeyCoverage:
+		return strconv.FormatBool(values.Coverage)
+	case KeyUpdateChecks:
+		return strconv.FormatBool(values.UpdateChecks)
+	case KeyShowLineNumbers:
+		return strconv.FormatBool(values.ShowLineNumbers)
+	case KeyMaxResults:
+		return strconv.Itoa(values.MaxResults)
+	case KeyHistoryEnabled:
+		return strconv.FormatBool(values.HistoryEnabled)
+	default:
+		return ""
+	}
+}
+
+func OverrideValue(overrides Overrides, key Key) (string, bool) {
+	switch key {
+	case KeyOutputFormat:
+		if overrides.OutputFormat != nil {
+			return *overrides.OutputFormat, true
+		}
+	case KeyFailOn:
+		if overrides.FailOn != nil {
+			return *overrides.FailOn, true
+		}
+	case KeyMaxComplexity:
+		if overrides.MaxComplexity != nil {
+			return strconv.Itoa(*overrides.MaxComplexity), true
+		}
+	case KeySecurityScan:
+		if overrides.SecurityScan != nil {
+			return strconv.FormatBool(*overrides.SecurityScan), true
+		}
+	case KeyCoverage:
+		if overrides.Coverage != nil {
+			return strconv.FormatBool(*overrides.Coverage), true
+		}
+	case KeyUpdateChecks:
+		if overrides.UpdateChecks != nil {
+			return strconv.FormatBool(*overrides.UpdateChecks), true
+		}
+	case KeyShowLineNumbers:
+		if overrides.ShowLineNumbers != nil {
+			return strconv.FormatBool(*overrides.ShowLineNumbers), true
+		}
+	case KeyMaxResults:
+		if overrides.MaxResults != nil {
+			return strconv.Itoa(*overrides.MaxResults), true
+		}
+	case KeyHistoryEnabled:
+		if overrides.HistoryEnabled != nil {
+			return strconv.FormatBool(*overrides.HistoryEnabled), true
+		}
+	}
+	return "", false
+}
+
 func Defaults() Values {
 	return Values{
 		OutputFormat:    "text",
@@ -168,12 +257,12 @@ func Load(path string) (Overrides, bool, error) {
 		return Overrides{}, false, nil
 	}
 	if err != nil {
-		return Overrides{}, false, fmt.Errorf("read configuration %q: %w", path, err)
+		return Overrides{}, false, fmt.Errorf("read configuration %q: %w; check file permissions", path, err)
 	}
 
 	overrides, err := Parse(data)
 	if err != nil {
-		return Overrides{}, true, fmt.Errorf("invalid configuration %q: %w", path, err)
+		return Overrides{}, true, fmt.Errorf("invalid configuration %q: %w; fix it or move it aside before retrying", path, err)
 	}
 	return overrides, true, nil
 }

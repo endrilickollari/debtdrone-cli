@@ -77,17 +77,22 @@ error text and rerun without the quality gate when isolating the cause:
 debtdrone scan . --format=json --security-scan=false
 ```
 
-## `.debtdrone.yaml` changes have no effect
+## Configuration changes have no effect on scans
 
 This is expected in the current release. `debtdrone init` generates a preview
-file, but scans do not load it. `debtdrone config set` also does not persist or
-change scan behavior.
+repository file, but scans do not load it. The user-level `debtdrone config set`
+command persists values safely, but scan, MCP, and TUI entry points do not apply
+them until the remaining integration lands.
 
 Pass scan settings as flags instead:
 
 ```bash
 debtdrone scan . --max-complexity=12 --fail-on=high
 ```
+
+If a config command reports malformed or incompatible YAML, follow the path in
+the error. Fix the file, upgrade DebtDrone for a newer schema, or move the file
+aside before retrying; DebtDrone will not overwrite data it cannot validate.
 
 ## `history` reports a corrupt or incompatible store
 
