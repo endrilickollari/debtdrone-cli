@@ -43,10 +43,7 @@ func TestMCPCommandRequiresRoot(t *testing.T) {
 
 func TestMCPCommandValidatesAndResolvesRoot(t *testing.T) {
 	repositoryRoot := t.TempDir()
-	workingDirectory, err := os.Getwd()
-	require.NoError(t, err)
-	relativeRoot, err := filepath.Rel(workingDirectory, repositoryRoot)
-	require.NoError(t, err)
+	t.Chdir(repositoryRoot)
 
 	var receivedRoot, receivedVersion string
 	runner := func(_ context.Context, root, version string, _ localconfig.Values) error {
@@ -56,7 +53,7 @@ func TestMCPCommandValidatesAndResolvesRoot(t *testing.T) {
 	}
 
 	root := rootWithMCP(runner)
-	stdout, stderr, err := executeCommandWithStreams(root, "mcp", "--root", relativeRoot)
+	stdout, stderr, err := executeCommandWithStreams(root, "mcp", "--root", ".")
 	require.NoError(t, err)
 	canonicalRoot, err := filepath.EvalSymlinks(repositoryRoot)
 	require.NoError(t, err)
