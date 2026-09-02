@@ -3,8 +3,11 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 )
 
 // Build-time variables injected by the linker (e.g. via -ldflags).
@@ -54,6 +57,12 @@ type AppModel struct {
 }
 
 func NewAppModel() *AppModel {
+	return NewConfiguredAppModel(localconfig.Defaults())
+}
+
+// NewConfiguredAppModel initializes every TUI setting from the same resolved
+// values used by the headless CLI and MCP server.
+func NewConfiguredAppModel(values localconfig.Values) *AppModel {
 	return &AppModel{
 		activeState: stateMenu,
 		width:       120,
@@ -61,13 +70,13 @@ func NewAppModel() *AppModel {
 		menu:        newMenuModel(),
 		scan:        newScanModel(),
 		history:     newHistoryModel(),
-		config:      newConfigModel(),
+		config:      newConfigModelWithValues(values),
 		update:      newUpdateModel(),
 	}
 }
 
-func RunTUI() error {
-	_, err := tea.NewProgram(NewAppModel()).Run()
+func RunTUI(values localconfig.Values) error {
+	_, err := tea.NewProgram(NewConfiguredAppModel(values)).Run()
 	return err
 }
 
@@ -102,11 +111,19 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.navigateTo(msg.State)
 
 	case StartScanMsg:
-		maxComplexity := 15
-		fmt.Sscanf(m.config.GetValue("Max Complexity"), "%d", &maxComplexity)
-		securityScan := m.config.GetValue("Security Scan") == "true"
-		outputFormat := m.config.GetValue("Output Format")
-		cmd := m.scan.Start(msg.Path, maxComplexity, securityScan, outputFormat)
+		maxComplexity, _ := strconv.Atoi(m.config.ConfigValue(localconfig.KeyMaxComplexity))
+		maxResults, _ := strconv.Atoi(m.config.ConfigValue(localconfig.KeyMaxResults))
+		scanOptions := service.ScanOptions{
+			MaxComplexity: maxComplexity,
+			SecurityScan:  m.config.ConfigValue(localconfig.KeySecurityScan) == "true",
+			Coverage:      m.config.ConfigValue(localconfig.KeyCoverage) == "true",
+		}
+		display := scanDisplayOptions{
+			outputFormat:    m.config.ConfigValue(localconfig.KeyOutputFormat),
+			showLineNumbers: m.config.ConfigValue(localconfig.KeyShowLineNumbers) == "true",
+			maxResults:      maxResults,
+		}
+		cmd := m.scan.Start(msg.Path, scanOptions, display, m.config.ConfigValue(localconfig.KeyHistoryEnabled) == "true")
 		m.activeState = stateScanning
 		return m, cmd
 
@@ -119,7 +136,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case LoadHistoryRunMsg:
-		outputFormat := m.config.GetValue("Output Format")
+		outputFormat := m.config.ConfigValue(localconfig.KeyOutputFormat)
 		m.scan.LoadResults(msg.Entry, outputFormat)
 		m.activeState = stateResults
 		return m, nil

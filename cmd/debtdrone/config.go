@@ -22,6 +22,7 @@ type configStore interface {
 
 type configStoreFactory func() (configStore, error)
 type environmentSource func() map[string]string
+type configurationResolver func(localconfig.Overrides) (localconfig.Resolved, error)
 
 type configOutput struct {
 	Key         localconfig.Key    `json:"key"`
@@ -54,6 +55,10 @@ func newConfigCmd() *cobra.Command {
 	return newConfigCommand(defaultConfigStore, processEnvironment)
 }
 
+func defaultConfigurationResolver(flags localconfig.Overrides) (localconfig.Resolved, error) {
+	return resolveConfiguration(defaultConfigStore, processEnvironment, flags)
+}
+
 func newConfigCommand(open configStoreFactory, environment environmentSource) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -71,7 +76,7 @@ func newConfigCommand(open configStoreFactory, environment environmentSource) *c
 			if err != nil {
 				return err
 			}
-			resolved, err := resolveConfiguration(open, environment)
+			resolved, err := resolveConfiguration(open, environment, localconfig.Overrides{})
 			if err != nil {
 				return err
 			}
@@ -98,7 +103,7 @@ func newConfigCommand(open configStoreFactory, environment environmentSource) *c
 			if err != nil {
 				return err
 			}
-			resolved, err := resolveConfiguration(open, environment)
+			resolved, err := resolveConfiguration(open, environment, localconfig.Overrides{})
 			if err != nil {
 				return err
 			}
@@ -177,7 +182,7 @@ func openConfigStore(open configStoreFactory) (configStore, error) {
 	return store, nil
 }
 
-func resolveConfiguration(open configStoreFactory, environment environmentSource) (localconfig.Resolved, error) {
+func resolveConfiguration(open configStoreFactory, environment environmentSource, flags localconfig.Overrides) (localconfig.Resolved, error) {
 	store, err := openConfigStore(open)
 	if err != nil {
 		return localconfig.Resolved{}, err
@@ -190,7 +195,7 @@ func resolveConfiguration(open configStoreFactory, environment environmentSource
 	if environment != nil {
 		environmentValues = environment()
 	}
-	resolved, err := localconfig.Resolve(file, environmentValues, localconfig.Overrides{})
+	resolved, err := localconfig.Resolve(file, environmentValues, flags)
 	if err != nil {
 		return localconfig.Resolved{}, fmt.Errorf("resolve local configuration: %w", err)
 	}

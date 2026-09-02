@@ -168,13 +168,13 @@ produce warnings on stderr.
 - `debtdrone init` creates a `.debtdrone.yaml` template, but scans do not load
   that file yet.
 - `debtdrone config list`, `get`, `set`, and `unset` manage the user-level
-  versioned file. Scans do not apply those settings until the remaining shared
-  resolver integration lands.
+  versioned file. Headless scans apply those settings after environment values
+  and before explicit command flags.
 - `debtdrone history list` returns bounded persisted summaries in text or JSON.
   Use `history show <id>`, `history delete <id>`, and the confirmed
   `history clear` command to inspect or manage them.
 
-See [Configuration](../configuration/) for the exact current limitations.
+See [Configuration](../configuration/) for paths, precedence, and validation.
 See [Local history storage](../history-storage/) for the persistence and privacy
 contract.
 For common pipeline and analyzer failures, see

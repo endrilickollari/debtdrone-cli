@@ -34,7 +34,7 @@ jobs:
         continue-on-error: true
 
   mcp-protocol:
-    name: MCP Protocol (${{ matrix.os }})
+    name: Local State and MCP (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -50,5 +50,8 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Run MCP stdio integration tests
-        run: go test -v ./cmd/debtdrone -run '^TestMCPStdioIntegration$'
+      - name: Run cross-platform local state tests
+        run: go test -v ./internal/localconfig ./internal/localhistory ./internal/mcpserver
+
+      - name: Run config and MCP command integration tests
+        run: go test -v ./cmd/debtdrone -run '^(TestConfig|TestMCP)'

@@ -24,15 +24,16 @@ Running without a command opens the interactive TUI in the current directory.
 | Command | Purpose |
 |---|---|
 | `scan [path]` | Run a headless technical-debt scan |
-| `mcp --root <path>` | Run the local, read-only MCP server over stdio |
+| `mcp --root <path>` | Run the local, repository-scoped MCP server over stdio |
 | `init` | Generate a preview `.debtdrone.yaml` file |
 | `config [command]` | Inspect and manage user-level configuration |
 | `history [command]` | Inspect and manage bounded local scan summaries |
 | `completion` | Generate shell-completion scripts |
 
-:::caution[Current persistence limitations]
-The current release does not load `.debtdrone.yaml` or apply the user-level
-configuration to scans yet. Use `scan` flags for automation.
+:::caution[Repository template limitation]
+The current release does not load the repository-level `.debtdrone.yaml`
+template. Scans use the versioned user configuration, environment, and explicit
+command or MCP overrides instead.
 :::
 
 ## `debtdrone scan`
@@ -45,11 +46,11 @@ debtdrone scan [path] [flags]
 
 | Flag | Shorthand | Default | Description |
 |---|---|---|---|
-| `--format string` | `-f` | `text` | Select `text` or `json` output |
-| `--fail-on string` | — | unset | Fail on `critical`, `high`, `medium`, or `low` and above |
-| `--max-complexity int` | — | `15` | Report high cyclomatic complexity above this value; critical starts above twice this value |
-| `--security-scan` | — | `true` | Enable the Trivy analyzer |
-| `--coverage` | — | `false` | Parse supported coverage artifacts already present in the repository |
+| `--format string` | `-f` | resolved config (`text` built in) | Select `text` or `json` output |
+| `--fail-on string` | — | resolved config (`none` built in) | Fail on `critical`, `high`, `medium`, or `low` and above |
+| `--max-complexity int` | — | resolved config (`15` built in) | Report high cyclomatic complexity above this value; critical starts above twice this value |
+| `--security-scan` | — | resolved config (`true` built in) | Enable the Trivy analyzer |
+| `--coverage` | — | resolved config (`false` built in) | Parse supported coverage artifacts already present in the repository |
 
 Boolean flags support Cobra's explicit form when you need to turn a default on
 or off:
@@ -79,7 +80,9 @@ Starts the Model Context Protocol server on stdin and stdout. `--root` is
 required and must be an existing directory. DebtDrone resolves the root to a
 canonical absolute path before starting the server.
 
-The server exposes the read-only `scan_repository` tool. Tool paths must be
+The server exposes the non-destructive `scan_repository` tool. It does not
+modify repository contents. Omitted scan settings use the same resolved local
+configuration as the CLI and TUI; explicit tool arguments override it. Tool paths must be
 relative to the configured root; absolute paths, parent traversal, and symlink
 escapes are rejected. Stdout is reserved for MCP protocol messages, so use an
 MCP client rather than parsing this command directly.
@@ -108,7 +111,8 @@ debtdrone config unset <key>
 
 `config list` prints every effective value, type, source, and description. It
 supports `--format text|json`. Sources are `default`, `config_file`, or
-`environment` until scan flags are routed through the shared resolver.
+`environment`; explicit scan flags and MCP arguments override those values for
+their invocation.
 
 `config get <key>` prints the effective value and supports `--format text|json`.
 `config set` validates and atomically persists one supported dotted key.
@@ -177,7 +181,7 @@ The full-screen TUI uses slash commands rather than Cobra subcommands:
 |---|---|
 | `/scan [path]` | Scan the supplied directory, or the launch directory when omitted |
 | `/history` | Browse scans completed in the current TUI session |
-| `/config` | Edit session-only TUI settings |
+| `/config` | Edit session settings initialized from resolved local configuration |
 | `/update` | Check for and apply a CLI release |
 | `/help` | Show TUI help |
 | `/quit` | Exit the TUI |

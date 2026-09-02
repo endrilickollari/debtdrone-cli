@@ -28,3 +28,17 @@ func TestScanModelDisplaysPartialResultsWithWarning(t *testing.T) {
 	assert.NoError(t, message.Err)
 	assert.Len(t, message.Entry.issues, 1)
 }
+
+func TestPrepareDisplayIssuesHonorsResolvedDisplaySettings(t *testing.T) {
+	line, column := 12, 4
+	issues := []models.TechnicalDebtIssue{
+		{FilePath: "first.go", LineNumber: &line, ColumnNumber: &column},
+		{FilePath: "second.go"},
+	}
+
+	displayed := prepareDisplayIssues(issues, scanDisplayOptions{maxResults: 1, showLineNumbers: false})
+	require.Len(t, displayed, 1)
+	assert.Nil(t, displayed[0].LineNumber)
+	assert.Nil(t, displayed[0].ColumnNumber)
+	assert.NotNil(t, issues[0].LineNumber, "display filtering must not mutate the scanner result")
+}

@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
 	"github.com/endrilickollari/debtdrone-cli/v2/scanner"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,7 +20,6 @@ import (
 const (
 	scanRepositoryToolName      = "scan_repository"
 	scanRepositorySchemaVersion = "debtdrone.scan_repository/v1"
-	defaultMaxComplexity        = 15
 	maximumMaxComplexity        = 10000
 	defaultMaxFindings          = 200
 	maximumMaxFindings          = 1000
@@ -34,9 +35,9 @@ type scanFunc func(context.Context, string, scanner.Options) (scanner.Report, er
 // ScanRepositoryInput is the validated input contract for scan_repository.
 type ScanRepositoryInput struct {
 	Path          string `json:"path,omitempty" jsonschema:"Repository path relative to the configured MCP root. Defaults to the configured root."`
-	MaxComplexity int    `json:"max_complexity,omitempty" jsonschema:"Cyclomatic complexity threshold. Defaults to 15, matching the CLI."`
-	SecurityScan  *bool  `json:"security_scan,omitempty" jsonschema:"Run the optional Trivy security analyzer. Defaults to true, matching the CLI."`
-	Coverage      bool   `json:"coverage,omitempty" jsonschema:"Parse existing coverage artifacts without executing repository tests. Defaults to false."`
+	MaxComplexity int    `json:"max_complexity,omitempty" jsonschema:"Cyclomatic complexity threshold. Defaults to the resolved DebtDrone configuration."`
+	SecurityScan  *bool  `json:"security_scan,omitempty" jsonschema:"Run the optional Trivy security analyzer. Defaults to the resolved DebtDrone configuration."`
+	Coverage      *bool  `json:"coverage,omitempty" jsonschema:"Parse existing coverage artifacts without executing repository tests. Defaults to the resolved DebtDrone configuration."`
 	MaxFindings   int    `json:"max_findings,omitempty" jsonschema:"Maximum findings returned before truncation. Defaults to 200 and cannot exceed 1000."`
 }
 
@@ -122,8 +123,10 @@ func (s *Server) addScanRepositoryTool() {
 		Description: "Scan a repository below the configured root for technical debt. Returns a deterministic, versioned report, never executes repository tests, and runs at most one scan at a time per MCP server.",
 		InputSchema: scanRepositoryInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint:    true,
-			IdempotentHint:  true,
+			// Scans never modify the target repository, but they may append a
+			// privacy-safe local history record or update Trivy's local cache.
+			ReadOnlyHint:    false,
+			IdempotentHint:  false,
 			OpenWorldHint:   &openWorld,
 			DestructiveHint: &nondestructive,
 		},
@@ -141,13 +144,15 @@ func scanRepositoryInputSchema() *jsonschema.Schema {
 	schema.Properties["max_complexity"].Maximum = jsonschema.Ptr(float64(maximumMaxComplexity))
 	schema.Properties["security_scan"].Type = "boolean"
 	schema.Properties["security_scan"].Types = nil
+	schema.Properties["coverage"].Type = "boolean"
+	schema.Properties["coverage"].Types = nil
 	schema.Properties["max_findings"].Minimum = jsonschema.Ptr(1.0)
 	schema.Properties["max_findings"].Maximum = jsonschema.Ptr(float64(maximumMaxFindings))
 	return schema
 }
 
 func (s *Server) scanRepository(ctx context.Context, _ *mcp.CallToolRequest, input ScanRepositoryInput) (*mcp.CallToolResult, ScanRepositoryOutput, error) {
-	input = applyInputDefaults(input)
+	input = applyInputDefaults(input, s.config)
 	if err := validateInput(input); err != nil {
 		return nil, ScanRepositoryOutput{}, err
 	}
@@ -163,14 +168,13 @@ func (s *Server) scanRepository(ctx context.Context, _ *mcp.CallToolRequest, inp
 
 	scan := s.scan
 	if scan == nil {
-		scan = scanner.Scan
+		scan = service.NewScanServiceWithHistoryEnabled(s.config.HistoryEnabled).RunReport
 	}
-	report, scanErr := scan(ctx, repositoryPath, scanner.Options{
-		Scope:      scanner.FullScan(),
-		Complexity: scanner.ComplexityOptions{Enabled: true, MaxCyclomatic: input.MaxComplexity},
-		Security:   scanner.SecurityOptions{Enabled: *input.SecurityScan},
-		Coverage:   scanner.CoverageOptions{Enabled: input.Coverage},
-	})
+	report, scanErr := scan(ctx, repositoryPath, service.ScanOptions{
+		MaxComplexity: input.MaxComplexity,
+		SecurityScan:  *input.SecurityScan,
+		Coverage:      *input.Coverage,
+	}, nil)
 	if contextErr := ctx.Err(); contextErr != nil {
 		scanErr = contextErr
 	}
@@ -224,15 +228,18 @@ func scanCapacityContextError(err error) error {
 	return fmt.Errorf("scan_repository cancelled while waiting for scan capacity: %w", err)
 }
 
-func applyInputDefaults(input ScanRepositoryInput) ScanRepositoryInput {
+func applyInputDefaults(input ScanRepositoryInput, defaults localconfig.Values) ScanRepositoryInput {
 	if input.Path == "" {
 		input.Path = "."
 	}
 	if input.MaxComplexity == 0 {
-		input.MaxComplexity = defaultMaxComplexity
+		input.MaxComplexity = defaults.MaxComplexity
 	}
 	if input.SecurityScan == nil {
-		input.SecurityScan = jsonschema.Ptr(true)
+		input.SecurityScan = jsonschema.Ptr(defaults.SecurityScan)
+	}
+	if input.Coverage == nil {
+		input.Coverage = jsonschema.Ptr(defaults.Coverage)
 	}
 	if input.MaxFindings == 0 {
 		input.MaxFindings = defaultMaxFindings

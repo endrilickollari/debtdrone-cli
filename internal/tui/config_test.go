@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestConfigModel_Navigation(t *testing.T) {
@@ -30,6 +32,28 @@ func TestConfigModel_Navigation(t *testing.T) {
 	if m.editBuffer != "150" {
 		t.Errorf("Expected editBuffer '150', got %q", m.editBuffer)
 	}
+}
+
+func TestConfigModelUsesResolvedValuesAndSharedValidation(t *testing.T) {
+	values := localconfig.Defaults()
+	values.OutputFormat = "json"
+	values.MaxComplexity = 27
+	values.Coverage = true
+	values.HistoryEnabled = false
+	m := newConfigModelWithValues(values)
+
+	assert.Equal(t, "json", m.ConfigValue(localconfig.KeyOutputFormat))
+	assert.Equal(t, "27", m.ConfigValue(localconfig.KeyMaxComplexity))
+	assert.Equal(t, "true", m.ConfigValue(localconfig.KeyCoverage))
+	assert.Equal(t, "false", m.ConfigValue(localconfig.KeyHistoryEnabled))
+
+	m.cursor = 3
+	m.mode = configEditing
+	m.editBuffer = "0"
+	m.Update(specialKeyMsg(tea.KeyEnter))
+	assert.Equal(t, configEditing, m.mode)
+	assert.Contains(t, m.validationError, "must be between 1")
+	assert.Equal(t, "27", m.ConfigValue(localconfig.KeyMaxComplexity))
 }
 
 func TestConfigModel_View(t *testing.T) {

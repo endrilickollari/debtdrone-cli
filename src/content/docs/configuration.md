@@ -3,8 +3,8 @@ title: Configuration
 description: Understand DebtDrone's versioned local settings, validation, storage paths, and precedence rules.
 ---
 
-DebtDrone defines one versioned local configuration contract for future use by
-the headless CLI, MCP server, and interactive TUI. The shared resolver applies
+DebtDrone defines one versioned local configuration contract for the headless
+CLI, MCP server, and interactive TUI. The shared resolver applies
 settings in this order, from lowest to highest priority:
 
 1. built-in defaults
@@ -16,12 +16,9 @@ Only a value that is present in a higher-priority layer replaces the resolved
 value. Explicit `false` and `0` values are preserved; they are not treated as
 missing.
 
-:::note[Integration status]
 The `config list`, `get`, `set`, and `unset` commands manage this user-level
-file. The current scan, MCP, and TUI entry points have not yet been routed
-through the resolver, so continue using scan flags for headless behavior until
-that integration lands.
-:::
+file. Headless, MCP, and TUI scans use the resolved values. Explicit headless
+flags and MCP tool arguments remain the highest-priority overrides.
 
 ## Local configuration path
 
@@ -102,7 +99,7 @@ this environment value replaces only the configured complexity threshold:
 export DEBTDRONE_MAX_COMPLEXITY=25
 ```
 
-and this explicit flag wins over both when command integration is enabled:
+and this explicit flag wins over both:
 
 ```bash
 debtdrone scan . --max-complexity=30
@@ -137,10 +134,10 @@ binary fails with an instruction to upgrade DebtDrone. A newer file is never
 partially interpreted as an older schema, which prevents unknown settings from
 being silently discarded.
 
-## Configure the current headless command
+## Configure a headless scan
 
-Until the shared resolver is connected to commands, pass settings directly to
-`debtdrone scan`:
+Persist reusable defaults with `debtdrone config set`, then override only the
+values a particular automation run needs:
 
 ```bash
 debtdrone scan . \
@@ -150,6 +147,10 @@ debtdrone scan . \
   --security-scan=true \
   --coverage=false
 ```
+
+MCP calls follow the same model: omitted `max_complexity`, `security_scan`, and
+`coverage` inputs use the resolved local values, while explicit tool inputs win.
+The mandatory MCP `--root` boundary is never read from stored configuration.
 
 :::caution[Trivy availability]
 Security scanning requires `trivy` on `PATH`. When Trivy is absent, DebtDrone
@@ -177,6 +178,11 @@ debtdrone config unset scan.max_complexity
 `unset` removes only the config-file override. A later `get` may therefore show
 an environment value or built-in default. Commands never print raw environment
 entries; only validated effective values from the supported allowlist appear.
+
+The TUI settings screen starts from the same effective values. Changes made in
+that screen are session overrides; use `debtdrone config set` when a value
+should persist across launches. Disabling `history.enabled` prevents CLI, MCP,
+and TUI scans from writing new local summaries without deleting existing ones.
 
 ## Repository template
 

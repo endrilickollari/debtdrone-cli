@@ -77,6 +77,7 @@ boundary tests before adoption. A SaaS rollback restores its previous
 application revision and scanner pin; it never switches to a copied engine.
 
 The local MCP server is another adapter over this same public scanner boundary.
-It exposes a read-only `scan_repository` tool over stdio and confines tool
-paths to an explicit root. See [MCP and coding agents](../mcp-and-agents/) for
-client setup, the tool contract, and its trust boundary.
+It exposes a non-destructive `scan_repository` tool over stdio, confines tool
+paths to an explicit root, and does not modify repository contents. See
+[MCP and coding agents](../mcp-and-agents/) for client setup, the tool contract,
+and its trust boundary.

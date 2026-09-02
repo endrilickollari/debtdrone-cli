@@ -43,6 +43,16 @@ type HistoryRecorder interface {
 }
 
 func NewScanService() *ScanService {
+	return NewScanServiceWithHistoryEnabled(true)
+}
+
+// NewScanServiceWithHistoryEnabled creates the shared scanner service while
+// honoring the resolved local-history opt-out. All adapters use this constructor
+// so history writes continue to have one implementation path in RunReport.
+func NewScanServiceWithHistoryEnabled(enabled bool) *ScanService {
+	if !enabled {
+		return &ScanService{scan: scanner.Scan, now: time.Now}
+	}
 	path, err := localhistory.DefaultPath()
 	if err != nil {
 		return &ScanService{scan: scanner.Scan, now: time.Now, history: failingHistoryRecorder{err: err}}
@@ -75,6 +85,14 @@ func (s *ScanService) Run(ctx context.Context, path string, opts ScanOptions, on
 }
 
 func (s *ScanService) RunDetailed(ctx context.Context, path string, opts ScanOptions, onProgress func(ScanProgress)) (ScanResult, error) {
+	report, scanErr := s.RunReport(ctx, path, opts, onProgress)
+	return scanResult(report, s.currentTime()), scanErr
+}
+
+// RunReport executes the canonical scanner and records the same privacy-safe
+// summary for every adapter. MCP keeps the richer report while CLI and TUI use
+// RunDetailed to receive their existing issue model.
+func (s *ScanService) RunReport(ctx context.Context, path string, opts ScanOptions, onProgress func(ScanProgress)) (scanner.Report, error) {
 	now := s.now
 	if now == nil {
 		now = time.Now
@@ -97,8 +115,38 @@ func (s *ScanService) RunDetailed(ctx context.Context, path string, opts ScanOpt
 		},
 	})
 
+	if s.history != nil && (scanErr == nil || IsPartialFailure(scanErr)) {
+		outcome := localhistory.OutcomeCompleted
+		if scanErr != nil {
+			outcome = localhistory.OutcomePartial
+		}
+		_, err := s.history.RecordScan(ctx, localhistory.RecordInput{
+			RepositoryPath: path,
+			StartedAt:      startedAt,
+			CompletedAt:    now(),
+			Outcome:        outcome,
+			Summary:        historySummary(report),
+		})
+		if err != nil {
+			report.Warnings = append(report.Warnings, scanner.Warning{
+				AnalyzerID: "local_history",
+				Message:    fmt.Sprintf("could not persist local scan history: %v", err),
+			})
+		}
+	}
+
+	return report, scanErr
+}
+
+func (s *ScanService) currentTime() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+func scanResult(report scanner.Report, issueTime time.Time) ScanResult {
 	issues := make([]models.TechnicalDebtIssue, 0, len(report.Findings))
-	issueTime := now()
 	userID, repositoryID, analysisRunID := uuid.New(), uuid.New(), uuid.New()
 	for _, finding := range report.Findings {
 		issues = append(issues, models.TechnicalDebtIssue{
@@ -126,29 +174,7 @@ func (s *ScanService) RunDetailed(ctx context.Context, path string, opts ScanOpt
 			UpdatedAt:          issueTime,
 		})
 	}
-
-	result := ScanResult{Issues: issues, Warnings: report.Warnings}
-	if s.history != nil && (scanErr == nil || IsPartialFailure(scanErr)) {
-		outcome := localhistory.OutcomeCompleted
-		if scanErr != nil {
-			outcome = localhistory.OutcomePartial
-		}
-		_, err := s.history.RecordScan(ctx, localhistory.RecordInput{
-			RepositoryPath: path,
-			StartedAt:      startedAt,
-			CompletedAt:    now(),
-			Outcome:        outcome,
-			Summary:        historySummary(report),
-		})
-		if err != nil {
-			result.Warnings = append(result.Warnings, scanner.Warning{
-				AnalyzerID: "local_history",
-				Message:    fmt.Sprintf("could not persist local scan history: %v", err),
-			})
-		}
-	}
-
-	return result, scanErr
+	return ScanResult{Issues: issues, Warnings: report.Warnings}
 }
 
 func historySummary(report scanner.Report) localhistory.Summary {

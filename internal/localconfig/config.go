@@ -146,10 +146,19 @@ func ParseKey(value string) (Key, error) {
 
 func ParseOverride(key Key, value string) (Overrides, error) {
 	var overrides Overrides
-	if err := setStringValue(&overrides, key, value); err != nil {
+	if err := overrides.Set(key, value); err != nil {
 		return Overrides{}, err
 	}
 	return overrides, nil
+}
+
+// Set parses and validates one value into an override layer. It is used by
+// adapters to collect only explicitly supplied flags or session settings.
+func (overrides *Overrides) Set(key Key, value string) error {
+	if overrides == nil {
+		return errors.New("configuration overrides are required")
+	}
+	return setStringValue(overrides, key, value)
 }
 
 func Value(values Values, key Key) string {

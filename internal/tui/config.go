@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/localconfig"
 )
 
 type configMode int
@@ -16,6 +17,7 @@ const (
 
 type configItem struct {
 	Category    string
+	ConfigKey   localconfig.Key
 	Key         string
 	Value       string
 	Type        string
@@ -25,11 +27,16 @@ type configItem struct {
 }
 
 func defaultConfigItems() []configItem {
+	return configItems(localconfig.Defaults())
+}
+
+func configItems(values localconfig.Values) []configItem {
 	return []configItem{
 		{
 			Category:    "General",
+			ConfigKey:   localconfig.KeyOutputFormat,
 			Key:         "Output Format",
-			Value:       "text",
+			Value:       localconfig.Value(values, localconfig.KeyOutputFormat),
 			Type:        "string",
 			Description: "Render mode for scan results",
 			Options:     []string{"text", "json"},
@@ -37,15 +44,17 @@ func defaultConfigItems() []configItem {
 		},
 		{
 			Category:    "General",
+			ConfigKey:   localconfig.KeyUpdateChecks,
 			Key:         "Auto-Update Checks",
-			Value:       "true",
+			Value:       localconfig.Value(values, localconfig.KeyUpdateChecks),
 			Type:        "bool",
 			Description: "Check for a newer release on each startup",
 		},
 		{
 			Category:    "Quality Gate",
+			ConfigKey:   localconfig.KeyFailOn,
 			Key:         "Fail on Severity",
-			Value:       "high",
+			Value:       localconfig.Value(values, localconfig.KeyFailOn),
 			Type:        "string",
 			Description: "Min severity for non-zero exit code",
 			Options:     []string{"low", "medium", "high", "critical", "none"},
@@ -53,49 +62,74 @@ func defaultConfigItems() []configItem {
 		},
 		{
 			Category:    "Quality Gate",
+			ConfigKey:   localconfig.KeyMaxComplexity,
 			Key:         "Max Complexity",
-			Value:       "15",
+			Value:       localconfig.Value(values, localconfig.KeyMaxComplexity),
 			Type:        "int",
 			Description: "Cyclomatic-complexity threshold per function",
 		},
 		{
 			Category:    "Quality Gate",
+			ConfigKey:   localconfig.KeySecurityScan,
 			Key:         "Security Scan",
-			Value:       "true",
+			Value:       localconfig.Value(values, localconfig.KeySecurityScan),
 			Type:        "bool",
 			Description: "Run Trivy vulnerability and secret detection",
 		},
 		{
+			Category:    "Quality Gate",
+			ConfigKey:   localconfig.KeyCoverage,
+			Key:         "Coverage",
+			Value:       localconfig.Value(values, localconfig.KeyCoverage),
+			Type:        "bool",
+			Description: "Parse existing coverage artifacts",
+		},
+		{
 			Category:    "Display",
+			ConfigKey:   localconfig.KeyShowLineNumbers,
 			Key:         "Show Line Numbers",
-			Value:       "true",
+			Value:       localconfig.Value(values, localconfig.KeyShowLineNumbers),
 			Type:        "bool",
 			Description: "Include line:col in the results list",
 		},
 		{
 			Category:    "Display",
+			ConfigKey:   localconfig.KeyMaxResults,
 			Key:         "Max Results",
-			Value:       "500",
+			Value:       localconfig.Value(values, localconfig.KeyMaxResults),
 			Type:        "int",
 			Description: "Cap on issues rendered per scan (0 = unlimited)",
+		},
+		{
+			Category:    "Privacy",
+			ConfigKey:   localconfig.KeyHistoryEnabled,
+			Key:         "History Persistence",
+			Value:       localconfig.Value(values, localconfig.KeyHistoryEnabled),
+			Type:        "bool",
+			Description: "Persist privacy-safe scan summaries locally",
 		},
 	}
 }
 
 // ConfigModel manages the settings screen.
 type ConfigModel struct {
-	items      []configItem
-	cursor     int
-	offset     int
-	mode       configMode
-	editBuffer string
-	width      int
-	height     int
+	items           []configItem
+	cursor          int
+	offset          int
+	mode            configMode
+	editBuffer      string
+	validationError string
+	width           int
+	height          int
 }
 
 func newConfigModel() *ConfigModel {
+	return newConfigModelWithValues(localconfig.Defaults())
+}
+
+func newConfigModelWithValues(values localconfig.Values) *ConfigModel {
 	return &ConfigModel{
-		items:  defaultConfigItems(),
+		items:  configItems(values),
 		mode:   configNavigating,
 		width:  120,
 		height: 40,
@@ -107,6 +141,16 @@ func (m *ConfigModel) Reset() {
 	m.offset = 0
 	m.mode = configNavigating
 	m.editBuffer = ""
+	m.validationError = ""
+}
+
+func (m *ConfigModel) ConfigValue(key localconfig.Key) string {
+	for _, item := range m.items {
+		if item.ConfigKey == key {
+			return item.Value
+		}
+	}
+	return ""
 }
 
 func (m *ConfigModel) GetValue(key string) string {
@@ -168,11 +212,11 @@ func (m *ConfigModel) handleNavKey(str string) (tea.Model, tea.Cmd) {
 		item := &m.items[m.cursor]
 		switch {
 		case item.Type == "bool":
+			value := "true"
 			if item.Value == "true" {
-				item.Value = "false"
-			} else {
-				item.Value = "true"
+				value = "false"
 			}
+			m.applyValue(item, value)
 		case item.IsOption:
 			m.cycleOption(item, +1)
 		default:
@@ -197,11 +241,13 @@ func (m *ConfigModel) handleEditKey(str string) (tea.Model, tea.Cmd) {
 	switch str {
 	case "esc":
 		m.editBuffer = ""
+		m.validationError = ""
 		m.mode = configNavigating
 	case "enter":
-		m.items[m.cursor].Value = m.editBuffer
-		m.editBuffer = ""
-		m.mode = configNavigating
+		if m.applyValue(&m.items[m.cursor], m.editBuffer) {
+			m.editBuffer = ""
+			m.mode = configNavigating
+		}
 	case "backspace":
 		runes := []rune(m.editBuffer)
 		if len(runes) > 0 {
@@ -210,6 +256,7 @@ func (m *ConfigModel) handleEditKey(str string) (tea.Model, tea.Cmd) {
 	default:
 		if isEditableChar(str) {
 			m.editBuffer += str
+			m.validationError = ""
 		}
 	}
 	return m, nil
@@ -221,13 +268,29 @@ func (m *ConfigModel) cycleOption(item *configItem, delta int) {
 	for i, opt := range item.Options {
 		if opt == item.Value {
 			n := (i + delta + len(item.Options)) % len(item.Options)
-			item.Value = item.Options[n]
+			m.applyValue(item, item.Options[n])
 			return
 		}
 	}
 	if len(item.Options) > 0 {
-		item.Value = item.Options[0]
+		m.applyValue(item, item.Options[0])
 	}
+}
+
+func (m *ConfigModel) applyValue(item *configItem, value string) bool {
+	override, err := localconfig.ParseOverride(item.ConfigKey, value)
+	if err != nil {
+		m.validationError = err.Error()
+		return false
+	}
+	canonical, ok := localconfig.OverrideValue(override, item.ConfigKey)
+	if !ok {
+		m.validationError = "configuration value is unavailable"
+		return false
+	}
+	item.Value = canonical
+	m.validationError = ""
+	return true
 }
 
 func (m *ConfigModel) View() tea.View {
@@ -355,6 +418,10 @@ func (m *ConfigModel) render() string {
 		)
 	}
 	b.WriteString(hints)
+	if m.validationError != "" {
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(colorCritical).Render(m.validationError))
+	}
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

@@ -14,7 +14,7 @@
 Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically-linked Go binary that serves three distinct purposes:
 1. **Interactive TUI:** A beautiful, responsive terminal interface for developers to explore code complexity locally.
 2. **Headless CLI:** A robust, pipeline-ready executable for CI/CD environments with strict quality gates and JSON outputs.
-3. **Coding-agent MCP:** A local, read-only stdio server on `main` for scanning an explicitly configured repository root.
+3. **Coding-agent MCP:** A local stdio server on `main` that scans within an explicit repository root without modifying its contents.
 
 ---
 
@@ -89,7 +89,7 @@ Once inside the TUI, you can use standard Vim bindings (`j`/`k`) to navigate. Us
 
 * `/scan` - Start a new technical debt scan on the current directory.
 * `/history` - View scans completed during the current TUI session.
-* `/config` - Adjust session-only TUI scan settings.
+* `/config` - Adjust session settings initialized from your resolved local configuration.
 * `/update` - Check for new releases and install them in-place.
 
 ---
@@ -144,8 +144,8 @@ debtdrone config set scan.max_complexity 20
 debtdrone config list
 ```
 
-These values are persisted safely but are not applied to scans until the shared
-CLI, MCP, and TUI integration lands. See the
+These values are applied consistently to CLI, MCP, and TUI scans. Explicit CLI
+flags and MCP tool inputs override them for one invocation. See the
 [configuration guide](https://cli.debtdrone.net/configuration/) for storage,
 validation, and precedence details.
 

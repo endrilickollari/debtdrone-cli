@@ -1,12 +1,13 @@
 ---
 title: MCP and coding agents
-description: Connect Codex or Claude Code to DebtDrone's local, read-only MCP server.
+description: Connect Codex or Claude Code to DebtDrone's local, repository-scoped MCP server.
 ---
 
 DebtDrone exposes its scanner to supported coding agents through a local
 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server. The
-agent starts `debtdrone` as a stdio process and can call one read-only tool,
-`scan_repository`, within a repository root that you choose.
+agent starts `debtdrone` as a stdio process and can call one repository-scoped
+tool, `scan_repository`, within a root that you choose. The tool does not modify
+repository contents.
 
 ![A coding agent starts the local DebtDrone MCP server, which scans only within its configured repository root](../../assets/diagrams/agent-flow.svg)
 *The agent and DebtDrone communicate over local stdio. Every tool path remains inside the configured root.*
@@ -152,9 +153,9 @@ analyzer failed while other results remained available.
 | Input | Default | Description |
 |---|---:|---|
 | `path` | `.` | Repository path relative to the configured MCP root |
-| `max_complexity` | `15` | Cyclomatic-complexity threshold; accepts `1` through `10000` |
-| `security_scan` | `true` | Run the optional Trivy security analyzer |
-| `coverage` | `false` | Parse existing coverage artifacts without executing tests |
+| `max_complexity` | Resolved config (`15` built in) | Cyclomatic-complexity threshold; accepts `1` through `10000` |
+| `security_scan` | Resolved config (`true` built in) | Run the optional Trivy security analyzer |
+| `coverage` | Resolved config (`false` built in) | Parse existing coverage artifacts without executing tests |
 | `max_findings` | `200` | Maximum returned findings; accepts `1` through `1000` |
 
 Absolute tool paths, parent traversal, and symlinks that resolve outside the
@@ -165,8 +166,8 @@ second request waits until the first scan finishes or the client cancels it.
 
 - The server is a local stdio process. It does not open a network listener,
   authenticate to DebtDrone SaaS, or persist results there.
-- `scan_repository` is read-only, idempotent, and non-destructive to the target
-  repository. The configured root is canonicalized before the server starts.
+- `scan_repository` is non-destructive to the target repository. The configured
+  root is canonicalized before the server starts.
 - The MCP client controls what result content is sent to its model provider.
   Review that client's data policy before scanning private source code.
 - Security scanning is enabled by default. It invokes a locally installed
@@ -175,6 +176,10 @@ second request waits until the first scan finishes or the client cancels it.
   predictable offline first scan.
 - Coverage mode only reads supported artifacts already in the repository.
   DebtDrone does not execute repository tests through MCP.
+- Successful and partial scans write the same privacy-safe local summaries as
+  CLI and TUI scans unless `history.enabled` resolves to `false`. Because a call
+  may append local history or update Trivy's cache, the MCP contract does not
+  advertise the tool as read-only or idempotent.
 - Treat repository content as untrusted input. DebtDrone reports findings; the
   coding agent remains responsible for deciding whether to take later actions.
 

@@ -3,6 +3,7 @@ package localconfig
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -201,7 +202,7 @@ func TestLoad(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("version: 2\n"), 0o600))
 		_, found, err := Load(path)
 		assert.True(t, found)
-		require.ErrorContains(t, err, path)
+		require.ErrorContains(t, err, strconv.Quote(path))
 		require.ErrorContains(t, err, "upgrade DebtDrone")
 	})
 }
