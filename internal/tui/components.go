@@ -28,6 +28,35 @@ func (l *issueList) selected() *models.TechnicalDebtIssue {
 	return &l.items[l.cursor]
 }
 
+// setItems replaces the visible findings and moves the cursor to the requested
+// row. Callers pass the row holding the previously selected finding so that
+// changing a filter keeps the reader on the same issue where possible; a
+// negative index clamps to the nearest valid row instead.
+func (l *issueList) setItems(items []models.TechnicalDebtIssue, cursor int) {
+	l.items = items
+	if cursor < 0 {
+		cursor = l.cursor
+	}
+	l.cursor = clamp(cursor, 0, max(len(items)-1, 0))
+	l.clampOffset()
+}
+
+// clampOffset keeps the scroll window inside the item range and guarantees the
+// cursor stays visible after the list length or viewport height changes.
+func (l *issueList) clampOffset() {
+	if l.height <= 0 {
+		l.offset = 0
+		return
+	}
+	l.offset = clamp(l.offset, 0, max(len(l.items)-l.height, 0))
+	if l.cursor < l.offset {
+		l.offset = l.cursor
+	}
+	if l.cursor >= l.offset+l.height {
+		l.offset = l.cursor - l.height + 1
+	}
+}
+
 func (l *issueList) moveDown() {
 	if l.cursor < len(l.items)-1 {
 		l.cursor++
@@ -79,13 +108,23 @@ func (l issueList) view() string {
 
 	const sevW = 10
 	const fileW = 38
+	const catW = 16
 	const gap = 2
-	msgW := max(l.width-sevW-fileW-(gap*4)-2, 8)
 
-	hSev := headerStyle.Width(sevW).Render("Severity")
-	hFile := headerStyle.Width(fileW).Render("File")
-	hMsg := headerStyle.Render("Message")
-	header := fmt.Sprintf("  %s  %s  %s", hSev, hFile, hMsg)
+	// The category column is only worth its width once the message column can
+	// still show a useful amount of text alongside it.
+	showCategory := l.width >= sevW+fileW+catW+40
+	fixedW := sevW + fileW + (gap * 4) + 2
+	if showCategory {
+		fixedW += catW + gap
+	}
+	msgW := max(l.width-fixedW, 8)
+
+	header := fmt.Sprintf("  %s  %s", headerStyle.Width(sevW).Render("Severity"), headerStyle.Width(fileW).Render("File"))
+	if showCategory {
+		header += "  " + headerStyle.Width(catW).Render("Category")
+	}
+	header += "  " + headerStyle.Render("Message")
 	sep := dimStyle.Render(strings.Repeat("─", l.width))
 
 	lines := []string{header, sep}
@@ -117,7 +156,18 @@ func (l issueList) view() string {
 			Foreground(colorText).
 			Render(truncate(issue.Message, msgW))
 
-		row := fmt.Sprintf("  %s  %s  %s", sevStr, fileStr, msgStr)
+		row := fmt.Sprintf("  %s  %s", sevStr, fileStr)
+		if showCategory {
+			category := issue.Category
+			if category == "" {
+				category = "—"
+			}
+			row += "  " + lipgloss.NewStyle().
+				Foreground(colorDim).
+				Width(catW).
+				Render(truncate(category, catW-1))
+		}
+		row += "  " + msgStr
 
 		if i == l.cursor {
 			row = lipgloss.NewStyle().
