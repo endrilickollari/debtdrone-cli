@@ -159,6 +159,7 @@ func (m *AppModel) navigateTo(s state) (tea.Model, tea.Cmd) {
 		m.config.Reset()
 	case stateMenu:
 		m.menu.Reset()
+		return m, m.menu.RefreshHistory()
 	case stateHelp:
 		m.menu.ShowHelp()
 	}
