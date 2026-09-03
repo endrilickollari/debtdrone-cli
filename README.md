@@ -22,7 +22,7 @@ Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically
 
 ### 🎨 The Interactive TUI (For Humans)
 Built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
-* **Master-Detail Explorer:** Navigate hundreds of issues effortlessly without text truncation.
+* **Results Workspace:** An always-visible severity and debt summary over a master-detail findings table, with combinable search, severity and category filters, four sort orders, and JSON export of the current view.
 * **Privacy-Conscious History:** Completed headless and TUI scans persist bounded
   summary metadata locally; the current TUI browser still displays only scans
   from its active session.

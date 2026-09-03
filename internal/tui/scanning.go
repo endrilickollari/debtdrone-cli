@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -98,7 +99,76 @@ type ScanModel struct {
 	list    issueList
 	detail  issueViewport
 
+	// Results workspace state. issues holds the render-bounded findings, summary
+	// describes the complete scan, and list holds the filtered visible subset.
+	filter      resultsFilter
+	summary     resultsSummary
+	categories  []string
+	searching   bool
+	searchDraft string
+	status      string
+
 	width, height int
+}
+
+// resultsChrome is the number of rows the results workspace spends on the
+// summary band, status line, and search prompt before the panes are sized.
+func (m *ScanModel) resultsChrome() int {
+	rows := 3 // summary band: headline, severity counts, repository path
+	if m.filter.active() || m.status != "" {
+		rows++
+	}
+	if m.searching {
+		rows++
+	}
+	return rows
+}
+
+// resizePanes recomputes the list and detail geometry for the current terminal.
+func (m *ScanModel) resizePanes() {
+	listH, detailH := splitHeightWithChrome(m.height, m.resultsChrome())
+	m.list.height = listH
+	m.list.width = m.width
+	m.list.clampOffset()
+	m.detail.height = detailH
+	m.detail.width = m.width - 4
+}
+
+// applyFilters recomputes the visible findings and keeps the reader on the same
+// finding when it survives the new filter. When it does not, the cursor holds
+// its row position so the view does not jump back to the top.
+func (m *ScanModel) applyFilters() {
+	previous := ""
+	if selected := m.list.selected(); selected != nil {
+		previous = issueIdentity(*selected)
+	}
+	filtered := applyResultsFilter(m.issues, m.filter)
+	m.list.setItems(filtered, indexOfIdentity(filtered, previous))
+	m.refreshDetail()
+}
+
+func (m *ScanModel) refreshDetail() {
+	if m.outputFormat == "json" {
+		return
+	}
+	m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+}
+
+// resetResultsView loads the render-bounded findings into the workspace while
+// retaining a summary calculated from the complete scan result.
+func (m *ScanModel) resetResultsView(issues []models.TechnicalDebtIssue, summary resultsSummary) {
+	m.issues = issues
+	m.filter = resultsFilter{}
+	m.searching = false
+	m.searchDraft = ""
+	m.status = ""
+	m.summary = summary
+	m.categories = issueCategories(issues)
+
+	m.list = newIssueList(nil, m.width, 0)
+	m.detail = issueViewport{}
+	m.resizePanes()
+	m.applyFilters()
 }
 
 func newScanModel() *ScanModel {
@@ -137,12 +207,14 @@ func (m *ScanModel) LoadResults(entry historyEntry, outputFormat string) {
 	m.outputFormat = outputFormat
 	m.err = nil
 	m.warning = nil
-	m.issues = entry.issues
-
-	listH, detailH := splitHeight(m.height)
-	m.list = newIssueList(entry.issues, m.width, listH)
-	m.detail = issueViewport{height: detailH, width: m.width - 4}
-	m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+	summary := entry.summary
+	if summary.severityCounts == nil {
+		summary = summarizeIssues(entry.issues)
+	}
+	m.resetResultsView(entry.issues, summary)
+	if m.outputFormat == "json" {
+		m.setJSONResults(entry.issues)
+	}
 }
 
 func (m *ScanModel) listenForScanProgress() tea.Cmd {
@@ -156,13 +228,12 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.phase == scanResults {
-			listH, detailH := splitHeight(m.height)
-			m.list.height = listH
-			m.list.width = m.width
-			m.detail.height = detailH
-			m.detail.width = m.width - 4
-			if m.outputFormat != "json" {
-				m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+			if m.outputFormat == "json" {
+				m.detail.height = m.height - 4
+				m.detail.width = m.width - 4
+			} else {
+				m.resizePanes()
+				m.refreshDetail()
 			}
 		}
 		return m, nil
@@ -194,34 +265,29 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.warning = errors.Join(m.warning, fmt.Errorf("%s: %s", warning.AnalyzerID, warning.Message))
 		}
 		displayIssues := prepareDisplayIssues(msg.issues, m.display)
-		m.issues = displayIssues
-		listH, detailH := splitHeight(m.height)
-		m.list = newIssueList(displayIssues, m.width, listH)
+		fullSummary := summarizeIssues(msg.issues)
+		m.resetResultsView(displayIssues, fullSummary)
 
 		if m.outputFormat == "json" {
-			jsonData, _ := json.MarshalIndent(displayIssues, "", "  ")
-			m.detail = issueViewport{height: m.height - 4, width: m.width - 4}
-			m.detail.setContent(string(jsonData))
-		} else {
-			m.detail = issueViewport{height: detailH, width: m.width - 4}
-			m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
+			m.setJSONResults(displayIssues)
 		}
 
 		now := time.Now()
 		run := models.AnalysisRun{
-			ID:                  uuid.New(),
-			StartedAt:           now,
-			Status:              "completed",
-			TotalIssuesFound:    len(msg.issues),
-			CriticalIssuesCount: countBySeverity(msg.issues, "critical"),
-			HighIssuesCount:     countBySeverity(msg.issues, "high"),
-			MediumIssuesCount:   countBySeverity(msg.issues, "medium"),
-			LowIssuesCount:      countBySeverity(msg.issues, "low"),
+			ID:                      uuid.New(),
+			StartedAt:               now,
+			Status:                  "completed",
+			TotalIssuesFound:        len(msg.issues),
+			CriticalIssuesCount:     countBySeverity(msg.issues, "critical"),
+			HighIssuesCount:         countBySeverity(msg.issues, "high"),
+			MediumIssuesCount:       countBySeverity(msg.issues, "medium"),
+			LowIssuesCount:          countBySeverity(msg.issues, "low"),
+			TotalTechnicalDebtHours: fullSummary.debtHours,
 		}
 		run.CompletedAt = &now
 		run.RepositoryName = &msg.path
 
-		entry := historyEntry{run: run, path: msg.path, issues: displayIssues}
+		entry := historyEntry{run: run, path: msg.path, issues: displayIssues, summary: fullSummary}
 		return m, func() tea.Msg { return ScanFinishedMsg{Entry: entry} }
 
 	case tea.KeyPressMsg:
@@ -229,6 +295,12 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *ScanModel) setJSONResults(issues []models.TechnicalDebtIssue) {
+	jsonData, _ := json.MarshalIndent(issues, "", "  ")
+	m.detail = issueViewport{height: m.height - 4, width: m.width - 4}
+	m.detail.setContent(string(jsonData))
 }
 
 func prepareDisplayIssues(issues []models.TechnicalDebtIssue, options scanDisplayOptions) []models.TechnicalDebtIssue {
@@ -256,15 +328,79 @@ func (m *ScanModel) handleKey(str string) (tea.Model, tea.Cmd) {
 
 	isJSON := m.outputFormat == "json"
 
+	if m.searching {
+		return m.handleSearchKey(str)
+	}
+
 	updateDetail := func() {
 		if !isJSON {
 			m.detail.setContent(formatIssueDetail(m.list.selected(), m.detail.width))
 		}
 	}
 
+	// A transient status such as an export confirmation occupies the row that
+	// otherwise reports the active filters, so moving on dismisses it and
+	// returns that row to the filter summary.
+	dismissStatus := func() {
+		if m.status == "" {
+			return
+		}
+		m.status = ""
+		m.resizePanes()
+	}
+
+	// Filtering, sorting, and export operate on the findings table, which the
+	// raw JSON view does not render.
+	if !isJSON {
+		switch str {
+		case "/":
+			m.searching = true
+			m.searchDraft = m.filter.query
+			m.status = ""
+			m.resizePanes()
+			return m, nil
+		case "1", "2", "3", "4":
+			severities := service.SeverityOrder()
+			index := int(str[0] - '1')
+			if index < len(severities) {
+				m.filter.toggleSeverity(severities[index])
+				m.status = ""
+				m.resizePanes()
+				m.applyFilters()
+			}
+			return m, nil
+		case "c":
+			m.filter.category = nextCategory(m.filter.category, m.categories)
+			m.status = ""
+			m.resizePanes()
+			m.applyFilters()
+			return m, nil
+		case "s":
+			m.filter.sort = m.filter.sort.next()
+			m.status = fmt.Sprintf("Sorted by %s", m.filter.sort)
+			m.resizePanes()
+			m.applyFilters()
+			return m, nil
+		case "x":
+			m.filter.clear()
+			m.status = ""
+			m.resizePanes()
+			m.applyFilters()
+			return m, nil
+		case "e":
+			m.status = m.exportVisibleFindings()
+			m.resizePanes()
+			return m, nil
+		}
+	}
+
+	dismissStatus()
+
 	switch str {
-	case "q", "esc", "r":
+	case "q", "esc":
 		return m, func() tea.Msg { return NavigateMsg{State: stateMenu} }
+	case "r":
+		return m, func() tea.Msg { return StartScanMsg{Path: m.scanPath} }
 	case "j", "down":
 		if isJSON {
 			m.detail.scrollDown(1)
@@ -297,6 +433,93 @@ func (m *ScanModel) handleKey(str string) (tea.Model, tea.Cmd) {
 		m.detail.scrollUp(3)
 	}
 	return m, nil
+}
+
+// handleSearchKey edits the search query. The findings table updates on every
+// keystroke so the reader sees matches narrow as they type; Enter keeps the
+// query and Esc restores the one that was active before searching began.
+func (m *ScanModel) handleSearchKey(str string) (tea.Model, tea.Cmd) {
+	switch str {
+	case "enter":
+		m.searching = false
+		m.resizePanes()
+		m.applyFilters()
+	case "esc":
+		m.searching = false
+		m.filter.query = m.searchDraft
+		m.resizePanes()
+		m.applyFilters()
+	case "backspace":
+		runes := []rune(m.filter.query)
+		if len(runes) > 0 {
+			m.filter.query = string(runes[:len(runes)-1])
+			m.applyFilters()
+		}
+	default:
+		if isEditableChar(str) {
+			m.filter.query += str
+			m.applyFilters()
+		}
+	}
+	return m, nil
+}
+
+// exportVisibleFindings writes the findings currently in view to a JSON file in
+// the working directory and returns the status message to show the reader.
+func (m *ScanModel) exportVisibleFindings() string {
+	if len(m.list.items) == 0 {
+		return "Nothing to export — no findings match the current filters."
+	}
+
+	payload, err := json.MarshalIndent(m.list.items, "", "  ")
+	if err != nil {
+		return "Export failed: " + err.Error()
+	}
+
+	name, err := writeFindingsExport(m.scanPath, time.Now().Format("20060102-150405"), payload)
+	if err != nil {
+		return "Export failed: " + err.Error()
+	}
+
+	absolute, absErr := filepath.Abs(name)
+	if absErr != nil {
+		absolute = name
+	}
+	return fmt.Sprintf("Exported %d findings to %s", len(m.list.items), absolute)
+}
+
+// writeFindingsExport creates a private file without replacing an existing path.
+// A suffix keeps repeated exports from the same second distinct and O_EXCL also
+// prevents a pre-existing symlink from redirecting the write.
+func writeFindingsExport(repositoryPath, stamp string, payload []byte) (string, error) {
+	const maximumAttempts = 1000
+	base := strings.TrimSuffix(exportFileName(repositoryPath, stamp), ".json")
+	for attempt := 0; attempt < maximumAttempts; attempt++ {
+		name := base + ".json"
+		if attempt > 0 {
+			name = fmt.Sprintf("%s-%d.json", base, attempt+1)
+		}
+
+		file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+
+		if _, err := file.Write(payload); err != nil {
+			_ = file.Close()
+			_ = os.Remove(name)
+			return "", err
+		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(name)
+			return "", err
+		}
+		return name, nil
+	}
+	return "", fmt.Errorf("could not create a unique export after %d attempts", maximumAttempts)
 }
 
 func (m *ScanModel) View() tea.View {
@@ -367,7 +590,14 @@ func (m *ScanModel) renderResults() string {
 	}
 
 	if len(m.issues) == 0 {
-		body := lipgloss.NewStyle().Foreground(colorOK).Bold(true).Render("No issues found — clean scan!")
+		body := lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.NewStyle().Foreground(colorOK).Bold(true).Render("No issues found — clean scan!"),
+			"",
+			lipgloss.NewStyle().Foreground(colorDim).Render("Repository  ")+
+				lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, 80)),
+			lipgloss.NewStyle().Foreground(colorDim).Render(
+				"Every analyzer completed without reporting a finding above your configured thresholds."),
+		)
 		box := lipgloss.NewStyle().
 			BorderLeft(true).BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(colorOK).
 			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(150).
@@ -392,7 +622,81 @@ func (m *ScanModel) renderResults() string {
 	return lipgloss.JoinVertical(lipgloss.Left, warning, results)
 }
 
+// renderSummaryBand shows the headline numbers for the whole scan so the reader
+// never has to navigate to learn how bad the result is.
+func (m *ScanModel) renderSummaryBand() string {
+	labelStyle := lipgloss.NewStyle().Foreground(colorDim)
+	totalStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
+
+	counts := make([]string, 0, len(service.SeverityOrder()))
+	for _, severity := range service.SeverityOrder() {
+		count := m.summary.severityCounts[severity]
+		style := lipgloss.NewStyle().Foreground(severityColor(severity)).Bold(true)
+		if count == 0 {
+			style = lipgloss.NewStyle().Foreground(colorDim)
+		}
+		counts = append(counts, style.Render(fmt.Sprintf("%s %d", strings.ToUpper(severity[:1])+severity[1:], count)))
+	}
+
+	headline := totalStyle.Render(fmt.Sprintf("%d findings", m.summary.total)) +
+		labelStyle.Render(fmt.Sprintf("  across %d files  ·  %.1fh estimated debt", m.summary.filesAffected, m.summary.debtHours))
+
+	path := labelStyle.Render("Repository  ") +
+		lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, max(m.width-16, 20)))
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		headline,
+		strings.Join(counts, lipgloss.NewStyle().Foreground(colorDim).Render("   ")),
+		path,
+	)
+}
+
+// renderStatusLine reports the active filters, or a transient action result
+// such as an export confirmation.
+func (m *ScanModel) renderStatusLine() string {
+	if m.status != "" {
+		return lipgloss.NewStyle().Foreground(colorOK).Render(m.status)
+	}
+	description := filterDescription(m.filter, len(m.list.items), len(m.issues))
+	if description == "" {
+		return ""
+	}
+	return lipgloss.NewStyle().Foreground(colorAccentBlue).Render("Filtered  ") +
+		lipgloss.NewStyle().Foreground(colorText).Render(description) +
+		lipgloss.NewStyle().Foreground(colorDim).Render("   x to clear")
+}
+
+// renderNoMatches replaces the table when filters exclude every finding. It
+// states what is filtered and how to recover rather than showing a blank pane.
+func (m *ScanModel) renderNoMatches() string {
+	title := lipgloss.NewStyle().Foreground(colorHigh).Bold(true).
+		Render("No findings match the current filters")
+	detail := lipgloss.NewStyle().Foreground(colorText).
+		Render(filterDescription(m.filter, 0, len(m.issues)))
+	recovery := lipgloss.NewStyle().Foreground(colorDim).
+		Render("x  clear all filters        /  edit the search        c  cycle category")
+	return lipgloss.JoinVertical(lipgloss.Left, "", title, detail, "", recovery)
+}
+
 func (m *ScanModel) renderTextResults() string {
+	sections := []string{m.renderSummaryBand()}
+	if status := m.renderStatusLine(); status != "" {
+		sections = append(sections, status)
+	}
+	if m.searching {
+		cursor := lipgloss.NewStyle().Foreground(colorAccentBlue).Render("▌")
+		sections = append(sections,
+			lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Render("Search  ")+
+				lipgloss.NewStyle().Foreground(colorText).Render(m.filter.query)+cursor+
+				lipgloss.NewStyle().Foreground(colorDim).Render("   enter apply   esc cancel"))
+	}
+
+	if len(m.list.items) == 0 {
+		sections = append(sections, m.renderNoMatches(),
+			lipgloss.NewStyle().Foreground(colorDim).Render("\nr rescan   q quit"))
+		return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	}
+
 	listPane := m.list.view()
 
 	const divTitle = " Issue Details "
@@ -412,10 +716,12 @@ func (m *ScanModel) renderTextResults() string {
 		Render(m.detail.view())
 
 	hints := lipgloss.NewStyle().Foreground(colorDim).Render(
-		"j/k ↑↓ navigate   J/K scroll detail   g/G top/bottom   pgup/pgdn page   r rescan   q quit",
+		"j/k navigate   J/K scroll detail   g/G top/bottom   /  search   1-4 severity   c category   " +
+			"s sort: " + m.filter.sort.String() + "   x clear   e export   r rescan   q quit",
 	)
 
-	return lipgloss.JoinVertical(lipgloss.Left, listPane, divider, detailPane, hints)
+	sections = append(sections, listPane, divider, detailPane, hints)
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 func (m *ScanModel) renderJSONResults() string {

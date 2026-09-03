@@ -11,9 +11,10 @@ import (
 
 // historyEntry bundles everything needed to re-display or replay a past scan.
 type historyEntry struct {
-	run    models.AnalysisRun
-	path   string
-	issues []models.TechnicalDebtIssue
+	run     models.AnalysisRun
+	path    string
+	issues  []models.TechnicalDebtIssue
+	summary resultsSummary
 }
 
 // HistoryModel manages the scan history screen.

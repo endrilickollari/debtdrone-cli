@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
@@ -30,21 +31,25 @@ func max(a, b int) int {
 	return b
 }
 
+func clamp(value, low, high int) int {
+	return min(max(value, low), high)
+}
+
 func isEditableChar(s string) bool {
-	if len(s) != 1 {
-		return false
-	}
-	r := rune(s[0])
-	return (r >= 'a' && r <= 'z') ||
-		(r >= 'A' && r <= 'Z') ||
-		(r >= '0' && r <= '9') ||
-		r == ' ' || r == '-' || r == '_' ||
-		r == '.' || r == '/' || r == ':' || r == '%'
+	runes := []rune(s)
+	return len(runes) == 1 && unicode.IsPrint(runes[0])
 }
 
 func splitHeight(totalHeight int) (listH, detailH int) {
+	return splitHeightWithChrome(totalHeight, 0)
+}
+
+// splitHeightWithChrome divides the terminal between the list and detail panes.
+// extraChrome reserves rows for screen-specific furniture such as the results
+// summary band, so the two panes shrink instead of overflowing the viewport.
+func splitHeightWithChrome(totalHeight, extraChrome int) (listH, detailH int) {
 	const chrome = 8
-	available := totalHeight - chrome
+	available := totalHeight - chrome - extraChrome
 	if available < 10 {
 		available = 10
 	}
@@ -123,6 +128,9 @@ func formatIssueDetail(issue *models.TechnicalDebtIssue, width int) string {
 	if issue.TechnicalDebtHours > 0 {
 		b.WriteString(label("Debt Hours") + value(fmt.Sprintf("%.1fh", issue.TechnicalDebtHours)) + "\n")
 	}
+	if issue.EffortMultiplier > 0 {
+		b.WriteString(label("Effort") + value(fmt.Sprintf("%.1f×", issue.EffortMultiplier)) + "\n")
+	}
 	if issue.ConfidenceScore > 0 {
 		b.WriteString(label("Confidence") + value(fmt.Sprintf("%.0f%%", issue.ConfidenceScore*100)) + "\n")
 	}
@@ -136,7 +144,7 @@ func formatIssueDetail(issue *models.TechnicalDebtIssue, width int) string {
 
 	if issue.Description != nil && *issue.Description != "" {
 		b.WriteString("\n")
-		b.WriteString(accentStyle.Render("Description") + "\n")
+		b.WriteString(accentStyle.Render("Details") + "\n")
 		b.WriteString(lipgloss.NewStyle().
 			Foreground(colorText).
 			Width(wrapW+labelW).
@@ -145,10 +153,18 @@ func formatIssueDetail(issue *models.TechnicalDebtIssue, width int) string {
 
 	if issue.CodeSnippet != nil && *issue.CodeSnippet != "" {
 		b.WriteString("\n")
-		b.WriteString(accentStyle.Render("Code Snippet") + "\n")
+		b.WriteString(accentStyle.Render("Evidence") + "\n")
 		b.WriteString(lipgloss.NewStyle().
 			Foreground(colorFilePath).
 			Render(*issue.CodeSnippet) + "\n")
+	}
+
+	if issue.SurroundingContext != nil && *issue.SurroundingContext != "" {
+		b.WriteString("\n")
+		b.WriteString(accentStyle.Render("Surrounding Context") + "\n")
+		b.WriteString(lipgloss.NewStyle().
+			Foreground(colorFilePath).
+			Render(*issue.SurroundingContext) + "\n")
 	}
 
 	return b.String()
@@ -176,7 +192,7 @@ func formatHistoryDetail(e historyEntry, width int) string {
 		return lipgloss.NewStyle().Foreground(col).Bold(true).
 			Render(fmt.Sprintf("%-10s", name)) +
 			lipgloss.NewStyle().Foreground(col).
-			Render(fmt.Sprintf("%d", count))
+				Render(fmt.Sprintf("%d", count))
 	}
 
 	duration := "—"

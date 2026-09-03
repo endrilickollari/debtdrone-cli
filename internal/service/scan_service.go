@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/localhistory"
@@ -185,14 +184,14 @@ func historySummary(report scanner.Report) localhistory.Summary {
 	}
 	for _, finding := range report.Findings {
 		summary.TechnicalDebtHours += finding.EstimatedDebtHours
-		switch strings.ToLower(finding.Severity) {
-		case "critical":
+		switch NormalizeSeverity(finding.Severity) {
+		case SeverityCritical:
 			summary.Critical++
-		case "high":
+		case SeverityHigh:
 			summary.High++
-		case "medium":
+		case SeverityMedium:
 			summary.Medium++
-		case "low":
+		case SeverityLow:
 			summary.Low++
 		}
 	}

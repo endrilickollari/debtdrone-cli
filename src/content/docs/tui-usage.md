@@ -43,9 +43,9 @@ DebtDrone uses familiar Vim-style keybindings throughout every view.
 | `Tab` | Move dashboard focus or cycle command-palette completions |
 | `Ctrl+C` | Exit the application from any view |
 
-Individual views add keys such as `g`/`G`, page navigation, and configuration
-editing. During an active scan, navigation keys are ignored; `Ctrl+C` exits the
-application rather than returning to the dashboard.
+Individual views add keys such as `g`/`G`, page navigation, results filtering,
+and configuration editing. During an active scan, navigation keys are ignored;
+`Ctrl+C` exits the application rather than returning to the dashboard.
 
 ---
 
@@ -115,15 +115,60 @@ A focused progress panel appears at the center of the screen. It shows the name 
 DebtDrone analyzes 14 languages: Go, JavaScript, TypeScript (including JSX/TSX), Python, Java, C#, PHP, Ruby, Rust, Kotlin, Swift, C, and C++. Files in `node_modules`, `vendor`, `dist`, and `.git` are excluded by default.
 :::
 
-### Phase 2 — Results (Master-Detail Layout)
+### Phase 2 — Results workspace
 
-Once scanning completes, the view expands into a full master-detail layout.
+Once scanning completes, the view expands into a results workspace.
 
-- **Top pane (Master):** A scrollable list of findings, colour-coded by severity (`critical` in red, `high` in orange, `medium` in yellow, `low` in blue). Use `j`/`k` to navigate.
-- **Bottom pane (Detail):** The selected finding's path and location, severity, category, type, analyzer, confidence, and message. Rule, debt, description, and source snippet fields appear when the analyzer provides them.
+- **Summary band:** Total findings, the files they touch, estimated debt hours,
+  and the critical/high/medium/low breakdown for the complete scan, even when
+  `ui.max_results` limits the rows rendered below it. It is always on screen, so
+  the headline numbers never require navigation.
+- **Findings table (Master):** A scrollable list colour-coded by severity
+  (`critical` in red, `high` in orange, `medium` in yellow, `low` in blue),
+  initially ordered most severe first. A category column appears on wider
+  terminals.
+- **Detail pane:** The selected finding's path and location, severity, category,
+  type, analyzer, confidence, debt hours, and message. Additional details,
+  evidence, and surrounding context appear when the analyzer provides them.
 
 ![Scan results master-detail view showing findings list and per-function metrics](../../assets/scan_result.png)
 *The results view. The top pane lists findings by severity; the bottom pane shows the analyzer metadata and threshold-aware message for the selected finding.*
+
+#### Filtering, searching, and sorting
+
+Search, severity, and category filters combine — each one narrows what the
+others left. The status line names every active filter and how many findings
+survive them.
+
+| Key | Action |
+|---|---|
+| `/` | Search findings; results narrow as you type. `Enter` keeps the query, `Esc` restores the previous one |
+| `1` `2` `3` `4` | Toggle the critical, high, medium, and low severities. Turning the last one off shows every severity again |
+| `c` | Cycle the category filter through each category present, then back to all |
+| `s` | Cycle the sort order: severity, file, debt hours, category |
+| `x` | Clear search, severity, and category filters. The sort order is a display preference and is kept |
+| `e` | Export the findings currently in view to a private, uniquely named JSON file in the working directory |
+| `r` | Scan the same repository again using the current configuration |
+| `j` / `k` | Move through findings |
+| `J` / `K` | Scroll the detail pane |
+| `g` / `G` | Jump to the first or last finding |
+| `pgup` / `pgdn` | Page through the table |
+
+The selected sort mode is the primary order; severity, file, and line provide
+stable tie-breaking. Switch back to severity sort to restore the
+critical-to-low order. When a filter change keeps the selected finding, the
+cursor follows it to its new row; when a filter excludes it, the cursor holds
+its position rather than jumping back to the top.
+
+If filters exclude everything, the workspace says which filters are active and
+how to clear them instead of showing an empty table. A scan that finds nothing
+reports a clean result along with the repository it covered.
+
+:::note[Raw JSON output]
+When **Output Format** is set to `json`, the results view shows the raw report as
+a scrollable document. Filtering, sorting, and search apply to the findings
+table and are unavailable in that mode.
+:::
 
 Press `Esc` to return to the dashboard. Completed results are added to the
 current TUI session's history. A privacy-conscious summary is also written to
