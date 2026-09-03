@@ -96,7 +96,7 @@ debtdrone
 ```
 
 Enter `/scan` to scan the current directory, use `j` and `k` to move through
-findings, and press `Esc` to return to the command bar. See the
+findings, and press `Esc` to return to the dashboard. See the
 [Interactive TUI guide](../tui-usage/) for the complete workflow.
 
 ## Next steps

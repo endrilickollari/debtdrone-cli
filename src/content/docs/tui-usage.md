@@ -18,10 +18,10 @@ Type `debtdrone` with no arguments:
 debtdrone
 ```
 
-The application opens to a centered **command bar** beneath the DebtDrone ASCII logo. Type `/` to begin a command, or press `Tab` to cycle through suggestions.
-
-![DebtDrone TUI welcome screen showing the ASCII logo and command bar](../../assets/TUI.png)
-*The TUI welcome screen. The command bar accepts slash-prefixed commands and offers tab-completion.*
+The application opens to a keyboard-first dashboard. Its **Primary actions**
+panel makes scanning, path selection, session history, settings, help, and quit
+available without memorizing commands. The **Recent scans** panel loads the
+three newest summaries from DebtDrone's shared local history store.
 
 :::note[Directory context]
 `/scan` targets the directory from which the TUI was launched by default. You
@@ -39,19 +39,46 @@ DebtDrone uses familiar Vim-style keybindings throughout every view.
 | `j` / `↓` | Move selection down |
 | `k` / `↑` | Move selection up |
 | `Enter` | Confirm selection / drill into detail |
-| `Esc` / `q` | Return to the command bar from a completed child view |
-| `Tab` | Cycle through completions in the command bar |
+| `Esc` / `q` | Return to the dashboard from a completed child view |
+| `Tab` | Move dashboard focus or cycle command-palette completions |
 | `Ctrl+C` | Exit the application from any view |
 
 Individual views add keys such as `g`/`G`, page navigation, and configuration
 editing. During an active scan, navigation keys are ignored; `Ctrl+C` exits the
-application rather than returning to the command bar.
+application rather than returning to the dashboard.
 
 ---
 
-## The Command Bar
+## The Dashboard
 
-When the TUI opens, you land on the command bar. Type `/` to begin a command. The bar offers tab-completion and shows a description of each command as you navigate.
+Use `j`/`k`, the arrow keys, or `Tab` to move through the visible rows, then
+press `Enter` to open the focused action. Returning from another view restores
+the previous dashboard focus and refreshes recent history.
+
+| Action | Shortcut | Result |
+|---|---|---|
+| Scan current directory | `s` | Start a scan of the directory where DebtDrone launched |
+| Choose repository path | `p` | Open the command palette with `/scan ` ready for a path |
+| Session scan history | `h` | Browse full findings retained during this TUI process |
+| Settings | `c` | Open the session settings editor |
+| Keyboard help | `?` | Show dashboard shortcuts and slash commands |
+| Quit DebtDrone | `q` | Exit to the shell |
+| Newest recent scan | `r` | Reopen its persisted summary |
+
+Recent rows show the privacy-safe repository name, completion time, outcome,
+finding count, and critical/high/medium/low breakdown. Press `Enter` on any
+recent row to reopen its summary. Source code and full finding details are not
+persisted, so those remain available only from session history.
+
+The empty state points first-time users to **Scan current directory**. If local
+history cannot be read, the dashboard shows the error while leaving all primary
+actions available.
+
+## The Command Palette
+
+Press `/` from the dashboard to open the command palette. It offers
+tab-completion and shows a description of each command as you navigate. Press
+`Esc` to return to the dashboard.
 
 Available commands:
 
@@ -73,13 +100,13 @@ Available commands:
 ```
 
 Omit `path` to scan the directory from which DebtDrone was launched. After you
-type `/scan `, the command bar suggests matching directories and `Tab` accepts
+type `/scan `, the command palette suggests matching directories and `Tab` accepts
 a suggestion. Pressing `Enter` triggers the analysis engine and transitions
 the view through two phases:
 
 ### Phase 1 — Scanning
 
-A focused progress panel appears at the center of the screen. It shows the name of the currently-running analyzer, the path being processed, and a live progress bar so you always know how far along the scan is. `Ctrl+C` exits DebtDrone immediately; the current TUI does not return to the command bar after cancelling a scan.
+A focused progress panel appears at the center of the screen. It shows the name of the currently-running analyzer, the path being processed, and a live progress bar so you always know how far along the scan is. `Ctrl+C` exits DebtDrone immediately; the current TUI does not return to the dashboard after cancelling a scan.
 
 ![Scan in progress panel showing ComplexityAnalyzer running at 33%](../../assets/scan_in_progress.png)
 *The scan progress panel mid-run. The active task (`ComplexityAnalyzer`) and the scanned path update in real time.*
@@ -98,7 +125,7 @@ Once scanning completes, the view expands into a full master-detail layout.
 ![Scan results master-detail view showing findings list and per-function metrics](../../assets/scan_result.png)
 *The results view. The top pane lists findings by severity; the bottom pane shows the analyzer metadata and threshold-aware message for the selected finding.*
 
-Press `Esc` to return to the command bar. Completed results are added to the
+Press `Esc` to return to the dashboard. Completed results are added to the
 current TUI session's history. A privacy-conscious summary is also written to
 the bounded local store, but full finding details are discarded when DebtDrone
 exits.

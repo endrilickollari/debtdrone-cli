@@ -84,13 +84,17 @@ To launch the interactive dashboard, simply run the tool with no arguments:
 debtdrone
 ```
 
-### TUI Commands & Navigation
-Once inside the TUI, you can use standard Vim bindings (`j`/`k`) to navigate. Use the command bar to jump between modules:
+### TUI Dashboard & Navigation
+Once inside the TUI, use `j`/`k` or the arrow keys to focus a visible dashboard
+action and press `Enter` to open it. Recent privacy-safe scan summaries appear
+beside the primary actions. Direct shortcuts include:
 
-* `/scan` - Start a new technical debt scan on the current directory.
-* `/history` - View scans completed during the current TUI session.
-* `/config` - Adjust session settings initialized from your resolved local configuration.
-* `/update` - Check for new releases and install them in-place.
+* `s` - Scan the current directory.
+* `p` - Choose another repository path.
+* `h` - View scans completed during the current TUI session.
+* `c` - Adjust session settings initialized from your resolved local configuration.
+* `?` - Show every shortcut and slash command.
+* `/` - Open the command palette for `/scan`, `/history`, `/config`, `/update`, and `/quit`.
 
 ---
 
