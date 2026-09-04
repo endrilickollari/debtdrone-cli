@@ -3,8 +3,8 @@ Critical 1   High 1   Medium 1   Low 1
 Repository  /Users/dev/projects/api-gateway
   Severity    File                                    Category          Message
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  critical    main.go:42                              security          hardcoded credential detected
-  high        handler.go:118                          complexity        cyclomatic complexity 24 exceeds threshold …
+› critical    main.go:42                              security          hardcoded credential detected
+  high        handler.go:118                          complexity        cyclomatic complexity 24 exceeds threshold 15
   medium      middleware.go:63                        complexity        nesting depth 6 exceeds threshold 4
   low         postgres.go:7                           coverage          file has low test coverage
   1 / 4
@@ -23,5 +23,5 @@ Repository  /Users/dev/projects/api-gateway
 │Confidence    95%                                                                                                     │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-j/k move   J/K detail   / search   1-4 severity   c category
-s sort: severity   x clear   e export   r rescan   q quit
+j/k navigate   J/K scroll detail   g/G top/bottom   / search   1-4 severity   c category   s sort: severity   x clear
+e export   r rescan   q quit

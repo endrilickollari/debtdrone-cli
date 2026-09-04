@@ -122,10 +122,13 @@ func (m *UpdateModel) View() tea.View {
 }
 
 func (m *UpdateModel) render() string {
-	const modalWidth = 80
-	const innerWidth = modalWidth - 8
+	modalWidth := min(80, max(m.width-2, 20))
+	innerWidth := max(modalWidth-8, 1)
 
 	spinner := spinnerChars[m.spinnerFrame]
+	if reducedMotion() {
+		spinner = "*"
+	}
 
 	heading := func(s string, c lipgloss.Color) string {
 		return lipgloss.NewStyle().Foreground(c).Bold(true).Render(s)
@@ -143,55 +146,64 @@ func (m *UpdateModel) render() string {
 	}
 
 	baseStyle := lipgloss.NewStyle().Background(colorBg).Width(innerWidth)
-	emptyLine := baseStyle.Render("")
+	line := func(value string) string { return baseStyle.Render(truncate(value, innerWidth)) }
+	styledLine := func(value string, colour lipgloss.Color, bold bool) string {
+		style := lipgloss.NewStyle().Foreground(colour).Bold(bold)
+		return baseStyle.Render(style.Render(truncate(value, innerWidth)))
+	}
+	emptyLine := line("")
+	availableBodyHeight := max(m.height-4, 1) // border and vertical padding
 
 	var body string
 	switch m.phase {
 	case updateChecking:
 		body = lipgloss.JoinVertical(lipgloss.Left,
-			baseStyle.Render(heading(spinner+"  Checking for updates…", colorAccentBlue)),
+			styledLine(spinner+"  Checking for updates…", colorAccentBlue, true),
 			emptyLine,
-			baseStyle.Render(dim("Querying GitHub releases for "+update.RepoOwner+"/"+update.RepoName)),
+			styledLine("Querying GitHub releases for "+update.RepoOwner+"/"+update.RepoName, colorDim, false),
 		)
 
 	case updateInstalling:
 		body = lipgloss.JoinVertical(lipgloss.Left,
-			baseStyle.Render(heading(spinner+"  Downloading and installing update…", colorAccentBlue)),
+			styledLine(spinner+"  Downloading and installing update…", colorAccentBlue, true),
 			emptyLine,
-			baseStyle.Render(dim("Please wait — do not close the terminal.")),
-			baseStyle.Render(dim("The binary will be replaced once the download completes.")),
+			styledLine("Please wait — do not close the terminal.", colorDim, false),
+			styledLine("The binary will be replaced once the download completes.", colorDim, false),
 		)
 
 	case updateSuccess:
-		var successMsg string
+		var successLines []string
 		if m.info != nil && m.info.Available {
-			successMsg = "DebtDrone has been updated to " +
-				lipgloss.NewStyle().Foreground(colorOK).Bold(true).Render("v"+m.info.Version) +
-				"\n" + dim("Please restart the tool to use the new version.")
+			successLines = []string{
+				styledLine("✓  DebtDrone has been updated to v"+m.info.Version, colorOK, true),
+				styledLine("Please restart the tool to use the new version.", colorDim, false),
+			}
 		} else {
-			successMsg = heading("You are already on the latest version.", colorOK)
+			successLines = []string{styledLine("✓  You are already on the latest version.", colorOK, true)}
 		}
-		body = lipgloss.JoinVertical(lipgloss.Left,
-			baseStyle.Render(heading("✓  "+successMsg, colorOK)),
+		successLines = append(successLines,
 			emptyLine,
 			baseStyle.Render(divider()),
 			emptyLine,
-			baseStyle.Render(dim("Press any key to return to the menu.")),
+			styledLine("Press any key to return to the menu.", colorDim, false),
 		)
+		body = lipgloss.JoinVertical(lipgloss.Left, successLines...)
 
 	case updateError:
 		errText := "unknown error"
 		if m.err != nil {
 			errText = m.err.Error()
 		}
+		errorLines := strings.Split(lipgloss.NewStyle().Foreground(colorError).Width(innerWidth).Render(errText), "\n")
+		maxErrorLines := max(availableBodyHeight-4, 1)
+		if len(errorLines) > maxErrorLines {
+			errorLines = append(errorLines[:maxErrorLines-1], dim("… (truncated)"))
+		}
 		body = lipgloss.JoinVertical(lipgloss.Left,
 			baseStyle.Render(heading("✗  Update failed", colorError)),
-			emptyLine,
-			baseStyle.Render(lipgloss.NewStyle().Foreground(colorError).Width(innerWidth).Render(errText)),
-			emptyLine,
+			strings.Join(errorLines, "\n"),
 			baseStyle.Render(divider()),
-			emptyLine,
-			baseStyle.Render(dim("Press any key to return to the menu.")),
+			line("Press any key to return to the menu."),
 		)
 
 	case updatePrompt:
@@ -204,40 +216,39 @@ func (m *UpdateModel) render() string {
 			newVer = m.info.Version
 		}
 		versionLine := dim("Current: ") +
-			lipgloss.NewStyle().Foreground(colorText).Render("v"+currentVer) +
+			lipgloss.NewStyle().Foreground(colorText).Render("v"+truncate(currentVer, 12)) +
 			lipgloss.NewStyle().Foreground(colorDim).Render("  →  ") +
 			dim("New: ") +
-			lipgloss.NewStyle().Foreground(colorOK).Bold(true).Render("v"+newVer)
+			lipgloss.NewStyle().Foreground(colorOK).Bold(true).Render("v"+truncate(newVer, 12))
 
 		notes := "(no release notes)"
 		if m.info != nil && m.info.ReleaseNotes != "" {
-			rawLines := strings.Split(strings.TrimSpace(m.info.ReleaseNotes), "\n")
-			const maxNoteLines = 12
-			if len(rawLines) > maxNoteLines {
-				rawLines = append(rawLines[:maxNoteLines], dim("… (truncated)"))
-			}
-			notes = strings.Join(rawLines, "\n")
+			notes = strings.TrimSpace(m.info.ReleaseNotes)
 		}
-		notesRendered := lipgloss.NewStyle().Foreground(colorText).Width(innerWidth).Render(notes)
+		noteLines := strings.Split(lipgloss.NewStyle().Foreground(colorText).Width(innerWidth).Render(notes), "\n")
+		maxNoteLines := max(availableBodyHeight-6, 1)
+		if len(noteLines) > maxNoteLines {
+			noteLines = append(noteLines[:maxNoteLines-1], dim("… (truncated)"))
+		}
+		notesRendered := strings.Join(noteLines, "\n")
 
 		footer := keyHint("y", "Install update") + "   " + keyHint("n", "Skip for now")
 
 		body = lipgloss.JoinVertical(lipgloss.Left,
 			baseStyle.Render(heading("Update Available", colorAccentBlue)),
-			emptyLine,
 			baseStyle.Render(versionLine),
-			emptyLine,
 			baseStyle.Render(divider()),
-			emptyLine,
 			baseStyle.Render(lipgloss.NewStyle().Foreground(colorDim).Bold(true).Render("Release Notes")),
-			emptyLine,
 			baseStyle.Render(notesRendered),
-			emptyLine,
 			baseStyle.Render(divider()),
-			emptyLine,
 			baseStyle.Render(footer),
 		)
 	}
+	bodyLines := strings.Split(body, "\n")
+	if len(bodyLines) > availableBodyHeight {
+		bodyLines = bodyLines[:availableBodyHeight]
+	}
+	body = strings.Join(bodyLines, "\n")
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

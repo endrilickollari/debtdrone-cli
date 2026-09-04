@@ -30,6 +30,36 @@ can provide another directory as `/scan <path>`.
 
 ---
 
+## Terminal requirements
+
+DebtDrone supports terminals of **60×16 or larger**. Below either dimension it
+replaces the interface with a message naming the current and required size
+rather than drawing a layout that cannot fit.
+
+Between 60 and 96 columns the interface uses a **compact layout**: the dashboard
+stacks its panels instead of placing them side by side, recent scans collapse to
+one line each when the terminal is also short, and the findings table drops its
+category column so the message column stays readable. When both dashboard panels
+cannot fit vertically, moving focus between actions and recent scans swaps the
+visible panel. No information is removed from the interface — only from columns
+that have somewhere else to show it.
+The findings table always shows the file name; the full path is in the detail
+pane below it.
+
+### Without colour
+
+DebtDrone follows the terminal's colour capability, including `NO_COLOR`.
+Nothing depends on colour alone:
+
+- severity is spelled out (`critical`, `high`, `medium`, `low`) beside its colour;
+- the focused row is marked with `›`, not only highlighted;
+- outcomes are labelled `COMPLETED` or `PARTIAL`.
+
+In an uncoloured terminal the scan spinner is replaced with a static marker; the
+elapsed time and completed-analyzer count still report progress.
+
+---
+
 ## Navigation
 
 DebtDrone uses familiar Vim-style keybindings throughout every view.
@@ -47,6 +77,10 @@ Individual views add keys such as `g`/`G`, page navigation, results filtering,
 and configuration editing. During an active scan, navigation keys are ignored
 and only cancellation is accepted: `Esc` stops the scan and returns to the
 dashboard, `Ctrl+C` stops it and exits.
+
+The help reference and reopened recent-scan summaries scroll with `j`/`k`, the
+arrow keys, `PgUp`/`PgDn`, or `g`/`G`. Their exit and action hints remain pinned
+at the bottom of the terminal while the content moves.
 
 ---
 
@@ -152,6 +186,8 @@ Once scanning completes, the view expands into a results workspace.
 - **Detail pane:** The selected finding's path and location, severity, category,
   type, analyzer, confidence, debt hours, and message. Additional details,
   evidence, and surrounding context appear when the analyzer provides them.
+  Long paths and messages wrap here rather than being cut, so anything the
+  table had to shorten can be read in full.
 
 ![DebtDrone results workspace with summary band, findings table and detail pane](../../assets/screens/scan-results.svg)
 *The results view. The summary band reports the whole scan, the table lists findings by severity, and the detail pane shows the analyzer metadata for the selected finding.*

@@ -8,13 +8,65 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
+	"github.com/mattn/go-runewidth"
 )
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+// truncate shortens a value to fit maxWidth terminal columns, marking the cut
+// with an ellipsis. It measures display width rather than bytes, so accented
+// and full-width characters are counted as the terminal draws them and a
+// multi-byte character is never split into invalid output.
+func truncate(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if runewidth.StringWidth(s) <= maxWidth {
 		return s
 	}
-	return s[:maxLen-1] + "…"
+	if maxWidth <= 1 {
+		return "…"
+	}
+
+	// One column is reserved for the ellipsis.
+	var (
+		builder strings.Builder
+		width   int
+	)
+	for _, r := range s {
+		runeWidth := runewidth.RuneWidth(r)
+		if width+runeWidth > maxWidth-1 {
+			break
+		}
+		builder.WriteRune(r)
+		width += runeWidth
+	}
+	return builder.String() + "…"
+}
+
+// truncateLeft keeps the end of a value visible. It is used for editable input
+// when the cursor has moved beyond the right edge of the available space.
+func truncateLeft(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if runewidth.StringWidth(s) <= maxWidth {
+		return s
+	}
+	if maxWidth == 1 {
+		return "…"
+	}
+
+	runes := []rune(s)
+	width := 0
+	start := len(runes)
+	for start > 0 {
+		runeWidth := runewidth.RuneWidth(runes[start-1])
+		if width+runeWidth > maxWidth-1 {
+			break
+		}
+		start--
+		width += runeWidth
+	}
+	return "…" + string(runes[start:])
 }
 
 func min(a, b int) int {
@@ -49,19 +101,24 @@ func splitHeight(totalHeight int) (listH, detailH int) {
 // summary band, so the two panes shrink instead of overflowing the viewport.
 func splitHeightWithChrome(totalHeight, extraChrome int) (listH, detailH int) {
 	const chrome = 8
-	available := totalHeight - chrome - extraChrome
-	if available < 10 {
-		available = 10
-	}
-	listH = available * 6 / 10
-	detailH = available - listH
-	if listH < 4 {
-		listH = 4
-	}
-	if detailH < 3 {
-		detailH = 3
-	}
+	// The panes shrink to whatever the terminal leaves rather than holding a
+	// comfortable minimum that would push the screen past the bottom edge.
+	available := max(totalHeight-chrome-extraChrome, 2)
+	listH = max(available*6/10, 1)
+	detailH = max(available-listH, 1)
 	return
+}
+
+// hangingValue wraps a value beside its label, indenting every continuation
+// line to the value column. Without the indent a wrapped path resumes under the
+// labels and reads as though it were one.
+func hangingValue(text string, labelWidth, wrapWidth int) string {
+	wrapped := lipgloss.NewStyle().Foreground(colorText).Width(wrapWidth).Render(text)
+	lines := strings.Split(wrapped, "\n")
+	for index := 1; index < len(lines); index++ {
+		lines[index] = strings.Repeat(" ", labelWidth) + lines[index]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func countBySeverity(issues []models.TechnicalDebtIssue, sev string) int {
@@ -117,7 +174,9 @@ func formatIssueDetail(issue *models.TechnicalDebtIssue, width int) string {
 
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(label("Full Path") + lipgloss.NewStyle().Foreground(colorText).Width(wrapW).Render(issue.FilePath) + "\n")
+	// The full path is wrapped rather than truncated: the findings table shows
+	// only the file name, so this is where a reader inspects the whole value.
+	b.WriteString(label("Full Path") + hangingValue(issue.FilePath, labelW, wrapW) + "\n")
 	b.WriteString(label("Line") + value(lineNum) + "\n")
 	b.WriteString(label("Severity") + sevRendered + "\n")
 	b.WriteString(label("Category") + value(issue.Category) + "\n")

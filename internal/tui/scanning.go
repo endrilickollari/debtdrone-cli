@@ -172,14 +172,28 @@ type ScanModel struct {
 	width, height int
 }
 
+// hintSegments lists the results-view key hints. It is shared by the renderer
+// and the layout budget so the rows the hints occupy are reserved, not guessed.
+func (m *ScanModel) hintSegments() []string {
+	return []string{
+		"j/k navigate", "J/K scroll detail", "g/G top/bottom", "/ search", "1-4 severity",
+		"c category", "s sort: " + m.filter.sort.String(), "x clear", "e export", "r rescan", "q quit",
+	}
+}
+
 // resultsChrome is the number of rows the results workspace spends on the
-// summary band, status line, and search prompt before the panes are sized.
+// summary band, hints, status line, and search prompt before the panes are sized.
 func (m *ScanModel) resultsChrome() int {
 	rows := 3 // summary band: headline, severity counts, repository path
+	// The hint row wraps on a narrow terminal; reserve what it actually takes.
+	rows += lipgloss.Height(renderHints(m.width, m.hintSegments())) - 1
 	if m.filter.active() || m.status != "" {
 		rows++
 	}
 	if m.searching {
+		rows++
+	}
+	if m.warning != nil {
 		rows++
 	}
 	return rows
@@ -656,7 +670,13 @@ func (m *ScanModel) render() string {
 func (m *ScanModel) renderScanning() string {
 	boxWidth := min(max(m.width-2, 24), 80)
 	innerWidth := max(boxWidth-8, 1) // four cells of padding per side
+	// A terminal without colour is generally a dumb terminal or a captured log,
+	// where an animated frame is noise rather than feedback. The elapsed timer
+	// and analyzer count still show that the scan is progressing.
 	spinner := spinnerChars[m.spinnerFrame]
+	if reducedMotion() {
+		spinner = "*"
+	}
 	accentBlue := lipgloss.Color("#4fc3f7")
 	dimColor := lipgloss.Color("#4a5068")
 	pathColor := lipgloss.Color("#8899bb")
@@ -771,10 +791,12 @@ func (m *ScanModel) renderResults() string {
 	if m.warning == nil {
 		return results
 	}
+	const warningPrefix = "Partial scan: "
 	warning := lipgloss.NewStyle().
 		Foreground(colorHigh).
 		Bold(true).
-		Render("Partial scan: ") + lipgloss.NewStyle().Foreground(colorDim).Render(m.warning.Error())
+		Render(warningPrefix) + lipgloss.NewStyle().Foreground(colorDim).
+		Render(truncate(m.warning.Error(), max(m.width-lipgloss.Width(warningPrefix), 1)))
 	return lipgloss.JoinVertical(lipgloss.Left, warning, results)
 }
 
@@ -811,14 +833,15 @@ func (m *ScanModel) renderSummaryBand() string {
 // such as an export confirmation.
 func (m *ScanModel) renderStatusLine() string {
 	if m.status != "" {
-		return lipgloss.NewStyle().Foreground(colorOK).Render(m.status)
+		return lipgloss.NewStyle().Foreground(colorOK).Render(truncate(m.status, max(m.width, 1)))
 	}
 	description := filterDescription(m.filter, len(m.list.items), len(m.issues))
 	if description == "" {
 		return ""
 	}
 	return lipgloss.NewStyle().Foreground(colorAccentBlue).Render("Filtered  ") +
-		lipgloss.NewStyle().Foreground(colorText).Render(description) +
+		lipgloss.NewStyle().Foreground(colorText).Render(truncate(description,
+			max(m.width-lipgloss.Width("Filtered     x to clear"), 1))) +
 		lipgloss.NewStyle().Foreground(colorDim).Render("   x to clear")
 }
 
@@ -826,11 +849,10 @@ func (m *ScanModel) renderStatusLine() string {
 // states what is filtered and how to recover rather than showing a blank pane.
 func (m *ScanModel) renderNoMatches() string {
 	title := lipgloss.NewStyle().Foreground(colorHigh).Bold(true).
-		Render("No findings match the current filters")
+		Render(truncate("No findings match the current filters", max(m.width, 1)))
 	detail := lipgloss.NewStyle().Foreground(colorText).
-		Render(filterDescription(m.filter, 0, len(m.issues)))
-	recovery := lipgloss.NewStyle().Foreground(colorDim).
-		Render("x  clear all filters        /  edit the search        c  cycle category")
+		Render(truncate(filterDescription(m.filter, 0, len(m.issues)), max(m.width, 1)))
+	recovery := renderHints(m.width, []string{"x clear all filters", "/ edit search", "c cycle category"})
 	return lipgloss.JoinVertical(lipgloss.Left, "", title, detail, "", recovery)
 }
 
@@ -841,10 +863,13 @@ func (m *ScanModel) renderTextResults() string {
 	}
 	if m.searching {
 		cursor := lipgloss.NewStyle().Foreground(colorAccentBlue).Render("▌")
+		const searchPrefix = "Search  "
+		const searchHints = "   enter apply   esc cancel"
+		queryWidth := max(m.width-lipgloss.Width(searchPrefix+searchHints+"▌"), 1)
 		sections = append(sections,
-			lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Render("Search  ")+
-				lipgloss.NewStyle().Foreground(colorText).Render(m.filter.query)+cursor+
-				lipgloss.NewStyle().Foreground(colorDim).Render("   enter apply   esc cancel"))
+			lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Render(searchPrefix)+
+				lipgloss.NewStyle().Foreground(colorText).Render(truncateLeft(m.filter.query, queryWidth))+cursor+
+				lipgloss.NewStyle().Foreground(colorDim).Render(searchHints))
 	}
 
 	if len(m.list.items) == 0 {
@@ -871,13 +896,7 @@ func (m *ScanModel) renderTextResults() string {
 		Width(m.width - 2).
 		Render(m.detail.view())
 
-	hintText := "j/k navigate   J/K scroll detail   g/G top/bottom   /  search   1-4 severity   c category   " +
-		"s sort: " + m.filter.sort.String() + "   x clear   e export   r rescan   q quit"
-	if m.width < lipgloss.Width(hintText) {
-		hintText = "j/k move   J/K detail   / search   1-4 severity   c category\n" +
-			"s sort: " + m.filter.sort.String() + "   x clear   e export   r rescan   q quit"
-	}
-	hints := lipgloss.NewStyle().Foreground(colorDim).Render(hintText)
+	hints := renderHints(m.width, m.hintSegments())
 
 	sections = append(sections, listPane, divider, detailPane, hints)
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -900,9 +919,7 @@ func (m *ScanModel) renderJSONResults() string {
 		Width(m.width - 2).
 		Render(m.detail.view())
 
-	hints := lipgloss.NewStyle().Foreground(colorDim).Render(
-		"j/k or J/K scroll json   r rescan   q quit",
-	)
+	hints := renderHints(m.width, []string{"j/k or J/K scroll json", "r rescan", "q quit"})
 
 	return lipgloss.JoinVertical(lipgloss.Left, divider, detailPane, hints)
 }
