@@ -1,0 +1,469 @@
+<!DOCTYPE html><html lang="en" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-vdxcvpsm"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Interactive TUI explorer | DebtDrone CLI</title><link rel="canonical" href="https://cli.debtdrone.net/tui-usage/"/><link rel="sitemap" href="/sitemap-index.xml"/><link rel="shortcut icon" href="/debtdrone-logo.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.2.9"/><meta name="generator" content="Starlight v0.41.9"/><meta property="og:title" content="Interactive TUI explorer"/><meta property="og:type" content="article"/><meta property="og:url" content="https://cli.debtdrone.net/tui-usage/"/><meta property="og:locale" content="en"/><meta property="og:description" content="Explore DebtDrone findings and workflows from the terminal interface."/><meta property="og:site_name" content="DebtDrone CLI"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="Explore DebtDrone findings and workflows from the terminal interface."/><!-- DebtDrone marketing and documentation surfaces intentionally use one dark theme. --><script>
+  document.documentElement.dataset.theme = 'dark';
+</script><link rel="stylesheet" href="/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/_astro/common.DwFJoiDl.css"><script type="module" src="/_astro/page.Dwipeu-R.js"></script></head><body class="astro-vdxcvpsm"><a class="sl-skip-link astro-vxeigawq" href="#_top">Skip to content</a><div class="page sl-flex astro-gqpr5s5a"><header class="header astro-gqpr5s5a"><div class="header astro-nczgtkxc"><div class="title-wrapper sl-flex astro-nczgtkxc"><a href="/" class="site-title sl-flex astro-clw6ags5"><img class="astro-clw6ags5" alt="DebtDrone" src="/_astro/debtdrone-logo.CFrh4diQ.svg" width="32" height="32"><span class="astro-clw6ags5" translate="no">DebtDrone CLI</span></a></div><div class="sl-flex print:hidden astro-nczgtkxc"><site-search class="astro-nczgtkxc astro-r5ar4xm7" data-translations="{&quot;placeholder&quot;:&quot;Search&quot;}"><button data-open-modal disabled aria-label="Search" aria-keyshortcuts="Control+K" class="astro-r5ar4xm7"><svg aria-hidden="true" class="astro-r5ar4xm7 astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-r5ar4xm7" aria-hidden="true">Search</span><kbd class="sl-hidden md:sl-flex astro-r5ar4xm7" style="display: none;"><kbd class="astro-r5ar4xm7">Ctrl</kbd><kbd class="astro-r5ar4xm7">K</kbd></kbd></button><dialog style="padding:0" aria-label="Search" class="astro-r5ar4xm7"><div class="dialog-frame sl-flex astro-r5ar4xm7"><button data-close-modal class="sl-flex md:sl-hidden astro-r5ar4xm7">Cancel</button><div class="search-container astro-r5ar4xm7"><div id="starlight__search" class="astro-r5ar4xm7"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/_astro/Search.astro_astro_type_script_index_0_lang.B-Vh4ymV.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-nczgtkxc"><div class="sl-flex social-icons astro-nczgtkxc"><a href="https://github.com/endrilickollari/debtdrone-cli" rel="me" class="sl-flex astro-cg55etiy"><span class="sr-only astro-cg55etiy">DebtDrone CLI on GitHub</span><svg aria-hidden="true" class="astro-cg55etiy astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><!-- The DebtDrone documentation follows the landing page's dark-only visual system. --><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-gqpr5s5a" aria-label="Main"><starlight-menu-button class="print:hidden astro-vvx7mffu"><button aria-expanded="false" aria-label="Menu" aria-controls="starlight__sidebar" class="sl-flex md:sl-hidden astro-vvx7mffu"><svg aria-hidden="true" class="open-menu astro-vvx7mffu astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-vvx7mffu astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg></button></starlight-menu-button><script type="module">var e=class extends HTMLElement{btn=this.querySelector(`button`);constructor(){super(),this.btn.addEventListener(`click`,()=>this.toggleExpanded());let e=this.closest(`nav`);e&&e.addEventListener(`keyup`,e=>this.closeOnEscape(e)),matchMedia(`(min-width: 50em)`).addEventListener(`change`,()=>this.setExpanded(!1))}setExpanded(e){this.setAttribute(`aria-expanded`,String(e)),document.body.toggleAttribute(`data-mobile-menu-expanded`,e),document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}toggleExpanded(){this.setExpanded(this.getAttribute(`aria-expanded`)!==`true`)}closeOnEscape(e){e.code===`Escape`&&(this.setExpanded(!1),this.btn.focus())}};customElements.define(`starlight-menu-button`,e);</script><div id="starlight__sidebar" class="sidebar-pane astro-gqpr5s5a"><div class="sidebar-content sl-flex astro-gqpr5s5a"><sl-sidebar-state-persist data-hash="1o4akf0" class="astro-f5yvicm7"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-ojxuodky"><li class="astro-ojxuodky"><a href="/" class="large astro-ojxuodky"><span class="astro-ojxuodky">Overview</span></a></li><li class="astro-ojxuodky"><details open class="astro-ojxuodky"><summary class="astro-ojxuodky"><span class="group-label astro-ojxuodky"><span class="large astro-ojxuodky">Tutorials</span></span><svg aria-hidden="true" class="caret astro-ojxuodky astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-ojxuodky"><li class="astro-ojxuodky"><a href="/quickstart/" class="astro-ojxuodky"><span class="astro-ojxuodky">Run your first scan</span></a></li></ul></details></li><li class="astro-ojxuodky"><details open class="astro-ojxuodky"><summary class="astro-ojxuodky"><span class="group-label astro-ojxuodky"><span class="large astro-ojxuodky">How-to guides</span></span><svg aria-hidden="true" class="caret astro-ojxuodky astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-ojxuodky"><li class="astro-ojxuodky"><a href="/installation/" class="astro-ojxuodky"><span class="astro-ojxuodky">Install the CLI</span></a></li><li class="astro-ojxuodky"><a href="/tui-usage/" aria-current="page" class="astro-ojxuodky"><span class="astro-ojxuodky">Interactive TUI</span></a></li><li class="astro-ojxuodky"><a href="/headless-usage/" class="astro-ojxuodky"><span class="astro-ojxuodky">Run scans in CI/CD</span></a></li><li class="astro-ojxuodky"><a href="/configuration/" class="astro-ojxuodky"><span class="astro-ojxuodky">Configure scans</span></a></li><li class="astro-ojxuodky"><a href="/troubleshooting/" class="astro-ojxuodky"><span class="astro-ojxuodky">Troubleshooting</span></a></li></ul></details></li><li class="astro-ojxuodky"><details open class="astro-ojxuodky"><summary class="astro-ojxuodky"><span class="group-label astro-ojxuodky"><span class="large astro-ojxuodky">Reference</span></span><svg aria-hidden="true" class="caret astro-ojxuodky astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-ojxuodky"><li class="astro-ojxuodky"><a href="/command-reference/" class="astro-ojxuodky"><span class="astro-ojxuodky">Command reference</span></a></li><li class="astro-ojxuodky"><a href="/history-storage/" class="astro-ojxuodky"><span class="astro-ojxuodky">Local history storage</span></a></li><li class="astro-ojxuodky"><a href="/scanner-coverage/" class="astro-ojxuodky"><span class="astro-ojxuodky">Coverage for Go consumers</span></a></li></ul></details></li><li class="astro-ojxuodky"><details open class="astro-ojxuodky"><summary class="astro-ojxuodky"><span class="group-label astro-ojxuodky"><span class="large astro-ojxuodky">Concepts</span></span><svg aria-hidden="true" class="caret astro-ojxuodky astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-ojxuodky"><li class="astro-ojxuodky"><a href="/architecture/" class="astro-ojxuodky"><span class="astro-ojxuodky">System architecture</span></a></li><li class="astro-ojxuodky"><a href="/ownership/" class="astro-ojxuodky"><span class="astro-ojxuodky">Scanner ownership</span></a></li><li class="astro-ojxuodky"><a href="/mcp-and-agents/" class="astro-ojxuodky"><span class="astro-ojxuodky">MCP and coding agents</span></a></li></ul></details></li><li class="astro-ojxuodky"><details open class="astro-ojxuodky"><summary class="astro-ojxuodky"><span class="group-label astro-ojxuodky"><span class="large astro-ojxuodky">Project</span></span><svg aria-hidden="true" class="caret astro-ojxuodky astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-ojxuodky"><li class="astro-ojxuodky"><a href="/contributing/" class="astro-ojxuodky"><span class="astro-ojxuodky">Contributing</span></a></li><li class="astro-ojxuodky"><a href="/deployment/" class="astro-ojxuodky"><span class="astro-ojxuodky">Documentation deployment</span></a></li><li class="astro-ojxuodky"><a href="/versioning/" class="astro-ojxuodky"><span class="astro-ojxuodky">Versioning and releases</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-b5gddk54"><div class="social-icons astro-b5gddk54"><a href="https://github.com/endrilickollari/debtdrone-cli" rel="me" class="sl-flex astro-cg55etiy"><span class="sr-only astro-cg55etiy">DebtDrone CLI on GitHub</span><svg aria-hidden="true" class="astro-cg55etiy astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><!-- The DebtDrone documentation follows the landing page's dark-only visual system. --></div></div></div></div></nav><div class="main-frame astro-gqpr5s5a"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-abfeecmu"><aside class="right-sidebar-container print:hidden astro-abfeecmu"><div class="right-sidebar astro-abfeecmu"><div class="lg:sl-hidden astro-q5mffni3"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-5ulgm6bh"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-5ulgm6bh"><details id="starlight__mobile-toc" class="astro-5ulgm6bh"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-5ulgm6bh"><span class="toggle sl-flex astro-5ulgm6bh">On this page<svg aria-hidden="true" class="caret astro-5ulgm6bh astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-5ulgm6bh"></span></summary><div class="dropdown astro-5ulgm6bh"><ul class="isMobile astro-cxyftcne" style="--depth: 0;"><li style="--depth: 0;" class="astro-cxyftcne"><a href="#_top" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Overview</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#launching-the-tui" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Launching the TUI</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#terminal-requirements" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Terminal requirements</span></a><ul class="isMobile astro-cxyftcne" style="--depth: 1;"><li style="--depth: 1;" class="astro-cxyftcne"><a href="#without-colour" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Without colour</span></a></li></ul></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#navigation" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Navigation</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#the-dashboard" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">The Dashboard</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#the-command-palette" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">The Command Palette</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#scan--analyzing-your-codebase" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/scan — Analyzing Your Codebase</span></a><ul class="isMobile astro-cxyftcne" style="--depth: 1;"><li style="--depth: 1;" class="astro-cxyftcne"><a href="#phase-1--scanning" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Phase 1 — Scanning</span></a></li><li style="--depth: 1;" class="astro-cxyftcne"><a href="#phase-2--results-workspace" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Phase 2 — Results workspace</span></a></li></ul></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#history--browsing-past-scans" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/history — Browsing Past Scans</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#config--interactive-settings-editor" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/config — Interactive Settings Editor</span></a><ul class="isMobile astro-cxyftcne" style="--depth: 1;"><li style="--depth: 1;" class="astro-cxyftcne"><a href="#editing-a-value" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Editing a Value</span></a></li></ul></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#update--self-updater" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/update — Self-Updater</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.BcSo_yiZ.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-q5mffni3"><div class="sl-container astro-q5mffni3"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">On this page</h2><ul class="astro-cxyftcne" style="--depth: 0;"><li style="--depth: 0;" class="astro-cxyftcne"><a href="#_top" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Overview</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#launching-the-tui" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Launching the TUI</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#terminal-requirements" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Terminal requirements</span></a><ul class="astro-cxyftcne" style="--depth: 1;"><li style="--depth: 1;" class="astro-cxyftcne"><a href="#without-colour" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Without colour</span></a></li></ul></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#navigation" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">Navigation</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#the-dashboard" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">The Dashboard</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#the-command-palette" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">The Command Palette</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#scan--analyzing-your-codebase" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/scan — Analyzing Your Codebase</span></a><ul class="astro-cxyftcne" style="--depth: 1;"><li style="--depth: 1;" class="astro-cxyftcne"><a href="#phase-1--scanning" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Phase 1 — Scanning</span></a></li><li style="--depth: 1;" class="astro-cxyftcne"><a href="#phase-2--results-workspace" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Phase 2 — Results workspace</span></a></li></ul></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#history--browsing-past-scans" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/history — Browsing Past Scans</span></a></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#config--interactive-settings-editor" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/config — Interactive Settings Editor</span></a><ul class="astro-cxyftcne" style="--depth: 1;"><li style="--depth: 1;" class="astro-cxyftcne"><a href="#editing-a-value" style="--depth: 1;" class="astro-cxyftcne"><span style="--depth: 1;" class="astro-cxyftcne">Editing a Value</span></a></li></ul></li><li style="--depth: 0;" class="astro-cxyftcne"><a href="#update--self-updater" style="--depth: 0;" class="astro-cxyftcne"><span style="--depth: 0;" class="astro-cxyftcne">/update — Self-Updater</span></a></li></ul></nav></starlight-toc><script type="module" src="/_astro/TableOfContents.astro_astro_type_script_index_0_lang.Csloo1VZ.js"></script></div></div></div></aside><div class="main-pane astro-abfeecmu"><main data-pagefind-body class="astro-vdxcvpsm" lang="en" dir="ltr"><div class="content-panel astro-oil7k7jf"><div class="sl-container astro-oil7k7jf"><h1 id="_top" class="astro-2sm4b3ln">Interactive TUI explorer</h1></div></div><div class="content-panel astro-oil7k7jf"><div class="sl-container astro-oil7k7jf"><div class="sl-markdown-content"><p>The DebtDrone TUI is a full-screen terminal application built with <a href="https://github.com/charmbracelet/bubbletea">Bubble Tea v2</a> and styled with <a href="https://github.com/charmbracelet/lipgloss">Lipgloss</a>. It is designed for the exploratory half of the workflow: understanding a codebase, spotting trends across scan history, and adjusting analysis settings — all without leaving the terminal.</p>
+<p>This guide covers interactive slash commands. Headless commands and flags are
+listed separately in the <a href="../command-reference/">command reference</a>.</p>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="launching-the-tui">Launching the TUI</h2><a class="sl-anchor-link" href="#launching-the-tui"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Launching the TUI”</span></a></div>
+<p>Type <code dir="auto">debtdrone</code> with no arguments:</p>
+<div class="expressive-code"><link rel="stylesheet" href="/_astro/ec.w36nc.css"><script type="module" src="/_astro/ec.0vx5m.js"></script><figure class="frame is-terminal not-content"><figcaption class="header"><span class="title"></span><span class="sr-only">Terminal window</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#82AAFF;--1:#3B61B0">debtdrone</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="debtdrone"><div></div></button></div></figure></div>
+<p>The application opens to a keyboard-first dashboard. Its <strong>Primary actions</strong>
+panel makes scanning, path selection, session history, settings, help, and quit
+available without memorizing commands. The <strong>Recent scans</strong> panel loads the
+three newest summaries from DebtDrone’s shared local history store.</p>
+<aside aria-label="Directory context" class="starlight-aside starlight-aside--note"><p class="starlight-aside__title" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="starlight-aside__icon"><path d="M12 11a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0v-4a1 1 0 0 0-1-1Zm.38-3.92a1 1 0 0 0-.76 0 1 1 0 0 0-.33.21 1.15 1.15 0 0 0-.21.33 1 1 0 0 0 .21 1.09c.097.088.209.16.33.21A1 1 0 0 0 13 8a1.05 1.05 0 0 0-.29-.71 1 1 0 0 0-.33-.21ZM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16.001A8 8 0 0 1 12 20Z"/></svg>Directory context</p><div class="starlight-aside__content"><p><code dir="auto">/scan</code> targets the directory from which the TUI was launched by default. You
+can provide another directory as <code dir="auto">/scan &lt;path&gt;</code>.</p></div></aside>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="terminal-requirements">Terminal requirements</h2><a class="sl-anchor-link" href="#terminal-requirements"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Terminal requirements”</span></a></div>
+<p>DebtDrone supports terminals of <strong>60×16 or larger</strong>. Below either dimension it
+replaces the interface with a message naming the current and required size
+rather than drawing a layout that cannot fit.</p>
+<p>Between 60 and 96 columns the interface uses a <strong>compact layout</strong>: the dashboard
+stacks its panels instead of placing them side by side, recent scans collapse to
+one line each when the terminal is also short, and the findings table drops its
+category column so the message column stays readable. When both dashboard panels
+cannot fit vertically, moving focus between actions and recent scans swaps the
+visible panel. No information is removed from the interface — only from columns
+that have somewhere else to show it.
+The findings table always shows the file name; the full path is in the detail
+pane below it.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="without-colour">Without colour</h3><a class="sl-anchor-link" href="#without-colour"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Without colour”</span></a></div>
+<p>DebtDrone follows the terminal’s colour capability, including <code dir="auto">NO_COLOR</code>.
+Nothing depends on colour alone:</p>
+<ul>
+<li>severity is spelled out (<code dir="auto">critical</code>, <code dir="auto">high</code>, <code dir="auto">medium</code>, <code dir="auto">low</code>) beside its colour;</li>
+<li>the focused row is marked with <code dir="auto">›</code>, not only highlighted;</li>
+<li>outcomes are labelled <code dir="auto">COMPLETED</code> or <code dir="auto">PARTIAL</code>.</li>
+</ul>
+<p>In an uncoloured terminal the scan spinner is replaced with a static marker; the
+elapsed time and completed-analyzer count still report progress.</p>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="navigation">Navigation</h2><a class="sl-anchor-link" href="#navigation"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Navigation”</span></a></div>
+<p>DebtDrone uses familiar Vim-style keybindings throughout every view.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">j</code> / <code dir="auto">↓</code></td>
+<td>Move selection down</td>
+</tr>
+<tr>
+<td><code dir="auto">k</code> / <code dir="auto">↑</code></td>
+<td>Move selection up</td>
+</tr>
+<tr>
+<td><code dir="auto">Enter</code></td>
+<td>Confirm selection / drill into detail</td>
+</tr>
+<tr>
+<td><code dir="auto">Esc</code> / <code dir="auto">q</code></td>
+<td>Return to the dashboard from a completed child view</td>
+</tr>
+<tr>
+<td><code dir="auto">Tab</code></td>
+<td>Move dashboard focus or cycle command-palette completions</td>
+</tr>
+<tr>
+<td><code dir="auto">Ctrl+C</code></td>
+<td>Exit the application from any view</td>
+</tr>
+</tbody>
+</table>
+<p>Individual views add keys such as <code dir="auto">g</code>/<code dir="auto">G</code>, page navigation, results filtering,
+and configuration editing. During an active scan, navigation keys are ignored
+and only cancellation is accepted: <code dir="auto">Esc</code> stops the scan and returns to the
+dashboard, <code dir="auto">Ctrl+C</code> stops it and exits.</p>
+<p>The help reference and reopened recent-scan summaries scroll with <code dir="auto">j</code>/<code dir="auto">k</code>, the
+arrow keys, <code dir="auto">PgUp</code>/<code dir="auto">PgDn</code>, or <code dir="auto">g</code>/<code dir="auto">G</code>. Their exit and action hints remain pinned
+at the bottom of the terminal while the content moves.</p>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="the-dashboard">The Dashboard</h2><a class="sl-anchor-link" href="#the-dashboard"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “The Dashboard”</span></a></div>
+<p>Use <code dir="auto">j</code>/<code dir="auto">k</code>, the arrow keys, or <code dir="auto">Tab</code> to move through the visible rows, then
+press <code dir="auto">Enter</code> to open the focused action. Returning from another view restores
+the previous dashboard focus and refreshes recent history.</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Shortcut</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scan current directory</td>
+<td><code dir="auto">s</code></td>
+<td>Start a scan of the directory where DebtDrone launched</td>
+</tr>
+<tr>
+<td>Choose repository path</td>
+<td><code dir="auto">p</code></td>
+<td>Open the command palette with <code dir="auto">/scan </code> ready for a path</td>
+</tr>
+<tr>
+<td>Session scan history</td>
+<td><code dir="auto">h</code></td>
+<td>Browse full findings retained during this TUI process</td>
+</tr>
+<tr>
+<td>Settings</td>
+<td><code dir="auto">c</code></td>
+<td>Open the session settings editor</td>
+</tr>
+<tr>
+<td>Keyboard help</td>
+<td><code dir="auto">?</code></td>
+<td>Show dashboard shortcuts and slash commands</td>
+</tr>
+<tr>
+<td>Quit DebtDrone</td>
+<td><code dir="auto">q</code></td>
+<td>Exit to the shell</td>
+</tr>
+<tr>
+<td>Newest recent scan</td>
+<td><code dir="auto">r</code></td>
+<td>Reopen its persisted summary</td>
+</tr>
+</tbody>
+</table>
+<p>Recent rows show the privacy-safe repository name, completion time, outcome,
+finding count, and critical/high/medium/low breakdown. Press <code dir="auto">Enter</code> on any
+recent row to reopen its summary. Source code and full finding details are not
+persisted, so those remain available only from session history.</p>
+<p><img alt="DebtDrone dashboard with primary actions and recent scans" loading="lazy" decoding="async" width="1040" height="752" src="/_astro/dashboard.DItafyt3_Z1kdQ6t.svg" srcset="">
+<em>The dashboard. Primary actions sit beside the newest local scan summaries, each row showing its outcome and severity breakdown.</em></p>
+<p>The empty state points first-time users to <strong>Scan current directory</strong>. If local
+history cannot be read, the dashboard shows the error while leaving all primary
+actions available.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="the-command-palette">The Command Palette</h2><a class="sl-anchor-link" href="#the-command-palette"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “The Command Palette”</span></a></div>
+<p>Press <code dir="auto">/</code> from the dashboard to open the command palette. It offers
+tab-completion and shows a description of each command as you navigate. Press
+<code dir="auto">Esc</code> to return to the dashboard.</p>
+<p>Available commands:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">/scan [path]</code></td>
+<td>Analyze the supplied directory, or the current directory when omitted</td>
+</tr>
+<tr>
+<td><code dir="auto">/history</code></td>
+<td>Browse scans completed in the current TUI session</td>
+</tr>
+<tr>
+<td><code dir="auto">/config</code></td>
+<td>Open the interactive settings editor</td>
+</tr>
+<tr>
+<td><code dir="auto">/update</code></td>
+<td>Check for a new DebtDrone release</td>
+</tr>
+<tr>
+<td><code dir="auto">/help</code></td>
+<td>Show the full keybindings reference</td>
+</tr>
+<tr>
+<td><code dir="auto">/quit</code></td>
+<td>Exit the application</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="scan--analyzing-your-codebase"><code dir="auto">/scan</code> — Analyzing Your Codebase</h2><a class="sl-anchor-link" href="#scan--analyzing-your-codebase"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “/scan — Analyzing Your Codebase”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">/scan [path]</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="/scan [path]"><div></div></button></div></figure></div>
+<p>Omit <code dir="auto">path</code> to scan the directory from which DebtDrone was launched. After you
+type <code dir="auto">/scan </code>, the command palette suggests matching directories and <code dir="auto">Tab</code> accepts
+a suggestion. Pressing <code dir="auto">Enter</code> triggers the analysis engine and transitions
+the view through two phases:</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="phase-1--scanning">Phase 1 — Scanning</h3><a class="sl-anchor-link" href="#phase-1--scanning"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Phase 1 — Scanning”</span></a></div>
+<p>The scan runs outside the interface’s update loop, so the panel keeps redrawing
+and stays responsive for the whole run.</p>
+<p>A focused progress panel appears at the center of the screen showing the stage
+(the analyzer currently running), the path being processed, and the elapsed
+time. Once the scanner reports how many analyzers the run contains, a bar tracks
+how many have <strong>finished</strong> — it counts completed analyzers rather than
+estimating a percentage, so it never claims progress the scan has not made.
+Before that total is known, the panel shows the stage and elapsed time alone.</p>
+<p><img alt="DebtDrone scanning a repository, showing stage, elapsed time and analyzers completed" loading="lazy" decoding="async" width="1040" height="752" src="/_astro/scan-in-progress.DOQUnzDP_Z1kdQ6t.svg" srcset="">
+<em>The scan progress panel mid-run. The stage, elapsed time, and completed-analyzer count update as the scan advances.</em></p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">Esc</code> / <code dir="auto">q</code></td>
+<td>Cancel the scan and return to the dashboard</td>
+</tr>
+<tr>
+<td><code dir="auto">Ctrl+C</code></td>
+<td>Cancel the scan and exit DebtDrone</td>
+</tr>
+</tbody>
+</table>
+<p>Cancelling stops the scanner itself rather than only hiding its output, and a
+cancelled scan can never deliver results afterwards. Starting another scan while
+one is running cancels the first — the newer scan owns the view, and the
+superseded run cannot overwrite it.</p>
+<aside aria-label="What gets scanned?" class="starlight-aside starlight-aside--tip"><p class="starlight-aside__title" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="starlight-aside__icon"><path fill-rule="evenodd" d="M1.44 8.855v-.001l3.527-3.516c.34-.344.802-.541 1.285-.548h6.649l.947-.947c3.07-3.07 6.207-3.072 7.62-2.868a1.821 1.821 0 0 1 1.557 1.557c.204 1.413.203 4.55-2.868 7.62l-.946.946v6.649a1.845 1.845 0 0 1-.549 1.286l-3.516 3.528a1.844 1.844 0 0 1-3.11-.944l-.858-4.275-4.52-4.52-2.31-.463-1.964-.394A1.847 1.847 0 0 1 .98 10.693a1.843 1.843 0 0 1 .46-1.838Zm5.379 2.017-3.873-.776L6.32 6.733h4.638l-4.14 4.14Zm8.403-5.655c2.459-2.46 4.856-2.463 5.89-2.33.134 1.035.13 3.432-2.329 5.891l-6.71 6.71-3.561-3.56 6.71-6.711Zm-1.318 15.837-.776-3.873 4.14-4.14v4.639l-3.364 3.374Z" clip-rule="evenodd"/><path d="M9.318 18.345a.972.972 0 0 0-1.86-.561c-.482 1.435-1.687 2.204-2.934 2.619a8.22 8.22 0 0 1-1.23.302c.062-.365.157-.79.303-1.229.415-1.247 1.184-2.452 2.62-2.935a.971.971 0 1 0-.62-1.842c-.12.04-.236.084-.35.13-2.02.828-3.012 2.588-3.493 4.033a10.383 10.383 0 0 0-.51 2.845l-.001.016v.063c0 .536.434.972.97.972H2.24a7.21 7.21 0 0 0 .878-.065c.527-.063 1.248-.19 2.02-.447 1.445-.48 3.205-1.472 4.033-3.494a5.828 5.828 0 0 0 .147-.407Z"/></svg>What gets scanned?</p><div class="starlight-aside__content"><p>DebtDrone analyzes 14 languages: Go, JavaScript, TypeScript (including JSX/TSX), Python, Java, C#, PHP, Ruby, Rust, Kotlin, Swift, C, and C++. Files in <code dir="auto">node_modules</code>, <code dir="auto">vendor</code>, <code dir="auto">dist</code>, and <code dir="auto">.git</code> are excluded by default.</p></div></aside>
+<div class="sl-heading-wrapper level-h3"><h3 id="phase-2--results-workspace">Phase 2 — Results workspace</h3><a class="sl-anchor-link" href="#phase-2--results-workspace"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Phase 2 — Results workspace”</span></a></div>
+<p>Once scanning completes, the view expands into a results workspace.</p>
+<ul>
+<li><strong>Summary band:</strong> Total findings, the files they touch, estimated debt hours,
+and the critical/high/medium/low breakdown for the complete scan, even when
+<code dir="auto">ui.max_results</code> limits the rows rendered below it. It is always on screen, so
+the headline numbers never require navigation.</li>
+<li><strong>Findings table (Master):</strong> A scrollable list colour-coded by severity
+(<code dir="auto">critical</code> in red, <code dir="auto">high</code> in orange, <code dir="auto">medium</code> in yellow, <code dir="auto">low</code> in blue),
+initially ordered most severe first. A category column appears on wider
+terminals.</li>
+<li><strong>Detail pane:</strong> The selected finding’s path and location, severity, category,
+type, analyzer, confidence, debt hours, and message. Additional details,
+evidence, and surrounding context appear when the analyzer provides them.
+Long paths and messages wrap here rather than being cut, so anything the
+table had to shorten can be read in full.</li>
+</ul>
+<p><img alt="DebtDrone results workspace with summary band, findings table and detail pane" loading="lazy" decoding="async" width="1040" height="518" src="/_astro/scan-results.pCLyYCeJ_Z2oGQ5g.svg" srcset="">
+<em>The results view. The summary band reports the whole scan, the table lists findings by severity, and the detail pane shows the analyzer metadata for the selected finding.</em></p>
+<div class="sl-heading-wrapper level-h4"><h4 id="filtering-searching-and-sorting">Filtering, searching, and sorting</h4><a class="sl-anchor-link" href="#filtering-searching-and-sorting"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Filtering, searching, and sorting”</span></a></div>
+<p>Search, severity, and category filters combine — each one narrows what the
+others left. The status line names every active filter and how many findings
+survive them.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">/</code></td>
+<td>Search findings; results narrow as you type. <code dir="auto">Enter</code> keeps the query, <code dir="auto">Esc</code> restores the previous one</td>
+</tr>
+<tr>
+<td><code dir="auto">1</code> <code dir="auto">2</code> <code dir="auto">3</code> <code dir="auto">4</code></td>
+<td>Toggle the critical, high, medium, and low severities. Turning the last one off shows every severity again</td>
+</tr>
+<tr>
+<td><code dir="auto">c</code></td>
+<td>Cycle the category filter through each category present, then back to all</td>
+</tr>
+<tr>
+<td><code dir="auto">s</code></td>
+<td>Cycle the sort order: severity, file, debt hours, category</td>
+</tr>
+<tr>
+<td><code dir="auto">x</code></td>
+<td>Clear search, severity, and category filters. The sort order is a display preference and is kept</td>
+</tr>
+<tr>
+<td><code dir="auto">e</code></td>
+<td>Export the findings currently in view to a private, uniquely named JSON file in the working directory</td>
+</tr>
+<tr>
+<td><code dir="auto">r</code></td>
+<td>Scan the same repository again using the current configuration</td>
+</tr>
+<tr>
+<td><code dir="auto">j</code> / <code dir="auto">k</code></td>
+<td>Move through findings</td>
+</tr>
+<tr>
+<td><code dir="auto">J</code> / <code dir="auto">K</code></td>
+<td>Scroll the detail pane</td>
+</tr>
+<tr>
+<td><code dir="auto">g</code> / <code dir="auto">G</code></td>
+<td>Jump to the first or last finding</td>
+</tr>
+<tr>
+<td><code dir="auto">pgup</code> / <code dir="auto">pgdn</code></td>
+<td>Page through the table</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="DebtDrone results filtered to high severity findings matching a search" loading="lazy" decoding="async" width="1040" height="464" src="/_astro/scan-results-filtered.jjCcZrS5_DqoU.svg" srcset="">
+<em>Filtered results. The status line names every active filter and how many findings survive them.</em></p>
+<p>The selected sort mode is the primary order; severity, file, and line provide
+stable tie-breaking. Switch back to severity sort to restore the
+critical-to-low order. When a filter change keeps the selected finding, the
+cursor follows it to its new row; when a filter excludes it, the cursor holds
+its position rather than jumping back to the top.</p>
+<p>If filters exclude everything, the workspace says which filters are active and
+how to clear them instead of showing an empty table. A scan that finds nothing
+reports a clean result along with the repository it covered.</p>
+<div class="sl-heading-wrapper level-h4"><h4 id="when-a-scan-fails">When a scan fails</h4><a class="sl-anchor-link" href="#when-a-scan-fails"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “When a scan fails”</span></a></div>
+<p>A scan that cannot complete reports the repository it targeted, how long it ran
+before failing, and the scanner’s own error text, so the failure can be acted on
+without rerunning it blind. Press <code dir="auto">r</code> to retry the same repository with your
+current configuration, or <code dir="auto">Esc</code> to return to the dashboard.</p>
+<p><img alt="DebtDrone reporting a failed scan with repository, elapsed time and retry options" loading="lazy" decoding="async" width="1040" height="752" src="/_astro/scan-failure.0DE7koaP_Z1kdQ6t.svg" srcset="">
+<em>A failed scan. The repository, the time it ran, and the scanner’s own error are all preserved for the retry.</em></p>
+<p>A scan that partially succeeds still shows its findings, with a <strong>Partial scan</strong>
+banner naming the analyzers that failed above the results.</p>
+<aside aria-label="Raw JSON output" class="starlight-aside starlight-aside--note"><p class="starlight-aside__title" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="starlight-aside__icon"><path d="M12 11a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0v-4a1 1 0 0 0-1-1Zm.38-3.92a1 1 0 0 0-.76 0 1 1 0 0 0-.33.21 1.15 1.15 0 0 0-.21.33 1 1 0 0 0 .21 1.09c.097.088.209.16.33.21A1 1 0 0 0 13 8a1.05 1.05 0 0 0-.29-.71 1 1 0 0 0-.33-.21ZM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16.001A8 8 0 0 1 12 20Z"/></svg>Raw JSON output</p><div class="starlight-aside__content"><p>When <strong>Output Format</strong> is set to <code dir="auto">json</code>, the results view shows the raw report as
+a scrollable document. Filtering, sorting, and search apply to the findings
+table and are unavailable in that mode.</p></div></aside>
+<p>Press <code dir="auto">Esc</code> to return to the dashboard. Completed results are added to the
+current TUI session’s history. A privacy-conscious summary is also written to
+the bounded local store, but full finding details are discarded when DebtDrone
+exits.</p>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="history--browsing-past-scans"><code dir="auto">/history</code> — Browsing Past Scans</h2><a class="sl-anchor-link" href="#history--browsing-past-scans"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “/history — Browsing Past Scans”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">/history</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="/history"><div></div></button></div></figure></div>
+<p>The history view lists scans completed during the current TUI session, newest
+first. The header bar shows each entry’s timestamp, scanned path, total issue
+count, and a severity breakdown (<code dir="auto">C</code> / <code dir="auto">H</code> / <code dir="auto">M</code> / <code dir="auto">L</code>). Selecting an entry
+opens a <strong>Past Scan Summary</strong> panel before you drill further.</p>
+<p><img alt="DebtDrone session history browser showing a past scan summary" loading="lazy" decoding="async" width="1040" height="410" src="/_astro/history.BAJ4Eyt0_Z1DfsvQ.svg" srcset="">
+<em>The history browser. The selected entry shows its totals and severity breakdown. Press <code dir="auto">Enter</code> to open the full results view for that run.</em></p>
+<p>Select any entry with <code dir="auto">Enter</code> to open it in the same master-detail layout used
+by the live scan view.</p>
+<aside aria-label="Spotting trends" class="starlight-aside starlight-aside--tip"><p class="starlight-aside__title" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="starlight-aside__icon"><path fill-rule="evenodd" d="M1.44 8.855v-.001l3.527-3.516c.34-.344.802-.541 1.285-.548h6.649l.947-.947c3.07-3.07 6.207-3.072 7.62-2.868a1.821 1.821 0 0 1 1.557 1.557c.204 1.413.203 4.55-2.868 7.62l-.946.946v6.649a1.845 1.845 0 0 1-.549 1.286l-3.516 3.528a1.844 1.844 0 0 1-3.11-.944l-.858-4.275-4.52-4.52-2.31-.463-1.964-.394A1.847 1.847 0 0 1 .98 10.693a1.843 1.843 0 0 1 .46-1.838Zm5.379 2.017-3.873-.776L6.32 6.733h4.638l-4.14 4.14Zm8.403-5.655c2.459-2.46 4.856-2.463 5.89-2.33.134 1.035.13 3.432-2.329 5.891l-6.71 6.71-3.561-3.56 6.71-6.711Zm-1.318 15.837-.776-3.873 4.14-4.14v4.639l-3.364 3.374Z" clip-rule="evenodd"/><path d="M9.318 18.345a.972.972 0 0 0-1.86-.561c-.482 1.435-1.687 2.204-2.934 2.619a8.22 8.22 0 0 1-1.23.302c.062-.365.157-.79.303-1.229.415-1.247 1.184-2.452 2.62-2.935a.971.971 0 1 0-.62-1.842c-.12.04-.236.084-.35.13-2.02.828-3.012 2.588-3.493 4.033a10.383 10.383 0 0 0-.51 2.845l-.001.016v.063c0 .536.434.972.97.972H2.24a7.21 7.21 0 0 0 .878-.065c.527-.063 1.248-.19 2.02-.447 1.445-.48 3.205-1.472 4.033-3.494a5.828 5.828 0 0 0 .147-.407Z"/></svg>Spotting trends</p><div class="starlight-aside__content"><p>Run a scan before and after a local refactor, then inspect each result from
+<code dir="auto">/history</code>. The current browser opens one result at a time and does not reload
+persisted summaries or full results across TUI restarts.</p></div></aside>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="config--interactive-settings-editor"><code dir="auto">/config</code> — Interactive Settings Editor</h2><a class="sl-anchor-link" href="#config--interactive-settings-editor"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “/config — Interactive Settings Editor”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">/config</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="/config"><div></div></button></div></figure></div>
+<p>The config view presents resolved settings as a navigable form, organised into
+<strong>General</strong>, <strong>Quality Gate</strong>, <strong>Display</strong>, and <strong>Privacy</strong> sections. Values begin
+with the same file and environment precedence used by headless and MCP scans.
+Edits become session overrides for scans started in the current TUI.</p>
+<p><img alt="DebtDrone interactive settings editor" loading="lazy" decoding="async" width="1040" height="752" src="/_astro/config.CLMWAnH4_Z1kdQ6t.svg" srcset="">
+<em>The Settings editor. Navigate with <code dir="auto">j</code>/<code dir="auto">k</code>, cycle enum values with <code dir="auto">←</code>/<code dir="auto">→</code>, and toggle booleans with <code dir="auto">Enter</code> or <code dir="auto">Space</code>.</em></p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Setting</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>General</strong></td>
+<td>Output Format</td>
+<td><code dir="auto">text</code> or <code dir="auto">json</code> for TUI result presentation</td>
+</tr>
+<tr>
+<td><strong>General</strong></td>
+<td>Auto-Update Checks</td>
+<td>The resolved launch value controls the automatic startup check; changing it after launch does not rerun the check</td>
+</tr>
+<tr>
+<td><strong>Quality Gate</strong></td>
+<td>Fail on Severity</td>
+<td>Shared value for headless quality gates; TUI scans do not return process-level quality-gate failures</td>
+</tr>
+<tr>
+<td><strong>Quality Gate</strong></td>
+<td>Max Complexity</td>
+<td>High cyclomatic complexity threshold per function; critical starts above twice the value (default: <code dir="auto">15</code>)</td>
+</tr>
+<tr>
+<td><strong>Quality Gate</strong></td>
+<td>Security Scan</td>
+<td>Run Trivy vulnerability and secret detection</td>
+</tr>
+<tr>
+<td><strong>Quality Gate</strong></td>
+<td>Coverage</td>
+<td>Parse existing coverage artifacts without running repository tests</td>
+</tr>
+<tr>
+<td><strong>Display</strong></td>
+<td>Show Line Numbers</td>
+<td>Include or hide line and column information in rendered results</td>
+</tr>
+<tr>
+<td><strong>Display</strong></td>
+<td>Max Results</td>
+<td>Cap findings rendered in the TUI; <code dir="auto">0</code> is unlimited</td>
+</tr>
+<tr>
+<td><strong>Privacy</strong></td>
+<td>History Persistence</td>
+<td>Write or skip new privacy-safe local scan summaries</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="editing-a-value">Editing a Value</h3><a class="sl-anchor-link" href="#editing-a-value"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Editing a Value”</span></a></div>
+<ol>
+<li>Navigate to the setting with <code dir="auto">j</code>/<code dir="auto">k</code>.</li>
+<li>Press <code dir="auto">Enter</code> to enter edit mode.</li>
+<li>For <strong>boolean</strong> settings, <code dir="auto">Enter</code> or <code dir="auto">Space</code> toggles the value directly.</li>
+<li>For <strong>enum</strong> settings (like Output Format), use <code dir="auto">←</code>/<code dir="auto">→</code> to cycle through valid values and <code dir="auto">Enter</code> to confirm.</li>
+<li>For <strong>integer</strong> settings, type the new value and press <code dir="auto">Enter</code>.</li>
+<li>Press <code dir="auto">Esc</code> to cancel an edit without saving.</li>
+</ol>
+<p>Changes remain in memory for the current TUI process. They are not written to
+the user config file or <code dir="auto">.debtdrone.yaml</code> and are discarded when DebtDrone
+exits. Use <code dir="auto">debtdrone config set &lt;key&gt; &lt;value&gt;</code> to persist a setting.</p>
+<hr>
+<div class="sl-heading-wrapper level-h2"><h2 id="update--self-updater"><code dir="auto">/update</code> — Self-Updater</h2><a class="sl-anchor-link" href="#update--self-updater"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “/update — Self-Updater”</span></a></div>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="plaintext"><code><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">/update</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="/update"><div></div></button></div></figure></div>
+<p>The update view connects to the GitHub Releases API, compares the current binary version against the latest published release, and presents the result.</p>
+<ul>
+<li>If you are <strong>up to date</strong>, a confirmation message is shown.</li>
+<li>If a <strong>new version is available</strong>, the release notes and changelog are displayed inline. Press <code dir="auto">Enter</code> to download and apply the update in-place. The binary replaces itself and the new version is active on the next launch.</li>
+</ul>
+<aside aria-label="Permissions" class="starlight-aside starlight-aside--caution"><p class="starlight-aside__title" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="starlight-aside__icon"><path d="M12 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10.67 1.47-8.05-14a3 3 0 0 0-5.24 0l-8 14A3 3 0 0 0 3.94 22h16.12a3 3 0 0 0 2.61-4.53Zm-1.73 2a1 1 0 0 1-.88.51H3.94a1 1 0 0 1-.88-.51 1 1 0 0 1 0-1l8-14a1 1 0 0 1 1.78 0l8.05 14a1 1 0 0 1 .05 1.02v-.02ZM12 8a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0V9a1 1 0 0 0-1-1Z"/></svg>Permissions</p><div class="starlight-aside__content"><p>The updater writes to the same path as the running binary. If DebtDrone was installed in a system directory (e.g., <code dir="auto">/usr/local/bin</code>), you may need to run it with <code dir="auto">sudo</code> or reinstall via Homebrew to apply updates.</p></div></aside>
+</div><footer class="sl-flex astro-xhxjzfa7"><div class="meta sl-flex astro-xhxjzfa7"><p>Last updated: <time datetime="2026-09-04T14:55:19.000Z">Sep 4, 2026</time></p></div><div class="pagination-links print:hidden astro-jgq3vlii" dir="ltr"><a href="/installation/" rel="prev" class="astro-jgq3vlii"><svg aria-hidden="true" class="astro-jgq3vlii astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-jgq3vlii">Previous<br class="astro-jgq3vlii"><span class="link-title astro-jgq3vlii">Install the CLI</span></span></a><a href="/headless-usage/" rel="next" class="astro-jgq3vlii"><svg aria-hidden="true" class="astro-jgq3vlii astro-n5k4ipy7" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-jgq3vlii">Next<br class="astro-jgq3vlii"><span class="link-title astro-jgq3vlii">Run scans in CI/CD</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>
