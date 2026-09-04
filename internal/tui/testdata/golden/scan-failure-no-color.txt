@@ -1,0 +1,25 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+         │
+         │  Scan failed
+         │
+         │  Repository  /Users/dev/projects/api-gateway
+         │  Failed after  9s
+         │
+         │  security analyzer failed: trivy executable not found in PATH
+         │
+
+                        r  retry this scan        esc  back to the dashboard        ctrl+c  quit

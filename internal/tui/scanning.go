@@ -654,7 +654,8 @@ func (m *ScanModel) render() string {
 }
 
 func (m *ScanModel) renderScanning() string {
-	const boxWidth = 80
+	boxWidth := min(max(m.width-2, 24), 80)
+	innerWidth := max(boxWidth-8, 1) // four cells of padding per side
 	spinner := spinnerChars[m.spinnerFrame]
 	accentBlue := lipgloss.Color("#4fc3f7")
 	dimColor := lipgloss.Color("#4a5068")
@@ -672,7 +673,7 @@ func (m *ScanModel) renderScanning() string {
 		lipgloss.NewStyle().Foreground(dimColor).Render("Stage    ") +
 			lipgloss.NewStyle().Foreground(colorText).Render(stage),
 		lipgloss.NewStyle().Foreground(dimColor).Render("Path     ") +
-			lipgloss.NewStyle().Foreground(pathColor).Render(truncate(m.scanPath, 60)),
+			lipgloss.NewStyle().Foreground(pathColor).Render(truncate(m.scanPath, max(innerWidth-9, 1))),
 		lipgloss.NewStyle().Foreground(dimColor).Render("Elapsed  ") +
 			lipgloss.NewStyle().Foreground(colorText).Render(formatElapsed(m.elapsed)),
 	}
@@ -681,12 +682,13 @@ func (m *ScanModel) renderScanning() string {
 	// reports a total there is nothing honest to draw, so the view shows the
 	// stage and elapsed time alone rather than inventing a percentage.
 	if m.totalAnalyzers > 0 {
-		const barWidth = 40
+		progressLabel := fmt.Sprintf("  %d/%d analyzers", m.completedAnalyzers, m.totalAnalyzers)
+		barWidth := min(40, max(innerWidth-lipgloss.Width(progressLabel), 1))
 		filled := clamp(m.completedAnalyzers*barWidth/m.totalAnalyzers, 0, barWidth)
 		bar := lipgloss.NewStyle().Foreground(progressColor).Render(strings.Repeat("█", filled)) +
 			lipgloss.NewStyle().Foreground(dimColor).Render(strings.Repeat("░", barWidth-filled))
 		rows = append(rows, "", bar+lipgloss.NewStyle().Foreground(colorText).Bold(true).
-			Render(fmt.Sprintf("  %d/%d analyzers", m.completedAnalyzers, m.totalAnalyzers)))
+			Render(progressLabel))
 	}
 
 	box := lipgloss.NewStyle().
@@ -697,8 +699,11 @@ func (m *ScanModel) renderScanning() string {
 		Background(lipgloss.Color("#1e2035")).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	hint := lipgloss.NewStyle().Foreground(dimColor).
-		Render("esc  cancel and return to the dashboard        ctrl+c  quit")
+	hintText := "esc  cancel and return to the dashboard        ctrl+c  quit"
+	if m.width < lipgloss.Width(hintText) {
+		hintText = "esc  cancel/back    ctrl+c  quit"
+	}
+	hint := lipgloss.NewStyle().Foreground(dimColor).Render(hintText)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
 }
 
@@ -720,18 +725,22 @@ func (m *ScanModel) renderResults() string {
 			lipgloss.NewStyle().Foreground(colorError).Bold(true).Render("Scan failed"),
 			"",
 			lipgloss.NewStyle().Foreground(colorDim).Render("Repository  ")+
-				lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, 80)),
+				lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, max(m.width-18, 10))),
 			lipgloss.NewStyle().Foreground(colorDim).Render("Failed after  ")+
 				lipgloss.NewStyle().Foreground(colorText).Render(formatElapsed(m.elapsed)),
 			"",
 			lipgloss.NewStyle().Foreground(colorText).Render(m.err.Error()),
 		)
+		boxWidth := min(max(m.width-1, 24), 100)
 		box := lipgloss.NewStyle().
 			BorderLeft(true).BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(colorError).
-			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(150).
+			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(boxWidth).
 			Background(colorBg).Render(body)
-		hint := lipgloss.NewStyle().Foreground(colorDim).
-			Render("r  retry this scan        esc  back to the dashboard        ctrl+c  quit")
+		hintText := "r  retry this scan        esc  back to the dashboard        ctrl+c  quit"
+		if m.width < lipgloss.Width(hintText) {
+			hintText = "r retry    esc dashboard    ctrl+c quit"
+		}
+		hint := lipgloss.NewStyle().Foreground(colorDim).Render(hintText)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
 	}
 
@@ -740,13 +749,14 @@ func (m *ScanModel) renderResults() string {
 			lipgloss.NewStyle().Foreground(colorOK).Bold(true).Render("No issues found — clean scan!"),
 			"",
 			lipgloss.NewStyle().Foreground(colorDim).Render("Repository  ")+
-				lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, 80)),
+				lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, max(m.width-18, 10))),
 			lipgloss.NewStyle().Foreground(colorDim).Render(
 				"Every analyzer completed without reporting a finding above your configured thresholds."),
 		)
+		boxWidth := min(max(m.width-1, 24), 100)
 		box := lipgloss.NewStyle().
 			BorderLeft(true).BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(colorOK).
-			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(150).
+			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(boxWidth).
 			Background(colorBg).Render(body)
 		hint := lipgloss.NewStyle().Foreground(colorDim).Render("r  rescan    q  quit")
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
@@ -861,10 +871,13 @@ func (m *ScanModel) renderTextResults() string {
 		Width(m.width - 2).
 		Render(m.detail.view())
 
-	hints := lipgloss.NewStyle().Foreground(colorDim).Render(
-		"j/k navigate   J/K scroll detail   g/G top/bottom   /  search   1-4 severity   c category   " +
-			"s sort: " + m.filter.sort.String() + "   x clear   e export   r rescan   q quit",
-	)
+	hintText := "j/k navigate   J/K scroll detail   g/G top/bottom   /  search   1-4 severity   c category   " +
+		"s sort: " + m.filter.sort.String() + "   x clear   e export   r rescan   q quit"
+	if m.width < lipgloss.Width(hintText) {
+		hintText = "j/k move   J/K detail   / search   1-4 severity   c category\n" +
+			"s sort: " + m.filter.sort.String() + "   x clear   e export   r rescan   q quit"
+	}
+	hints := lipgloss.NewStyle().Foreground(colorDim).Render(hintText)
 
 	sections = append(sections, listPane, divider, detailPane, hints)
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)

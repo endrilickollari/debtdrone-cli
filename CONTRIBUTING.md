@@ -53,6 +53,46 @@ go test ./scanner/... ./internal/analysis/...
 go test -cover ./...
 ```
 
+### TUI screens: golden fixtures and documentation images
+
+The terminal interface is covered by golden fixtures — recordings of each screen
+including its colour and styling — stored in `internal/tui/testdata/golden/`.
+They are rendered from fixed inputs at fixed terminal sizes, so they do not
+depend on the clock, the working directory, or the host terminal.
+
+A change to the interface will fail `TestGoldenScreens` with a diff of the
+screen it altered. That failure is the review prompt: confirm the new rendering
+is what you intended, then re-record it.
+
+```bash
+# Re-record every screen after an intentional interface change
+make tui-fixtures
+
+# Regenerate the images embedded in the documentation site
+make tui-assets
+```
+
+Both commands rewrite files in place; **review the resulting diff as carefully
+as you would review source**. An unexplained fixture change is an unexplained
+change to what users see.
+
+The documentation images in `src/assets/screens/` are SVGs generated from those
+same screens, so a published visual cannot drift from the interface it
+documents. Do not hand-edit them, and do not replace them with manual
+screenshots — the next `make tui-assets` would overwrite the difference.
+
+To add a screen to either set:
+
+1. Add a builder to `internal/tui/screens_test.go` that constructs the model
+   deterministically.
+2. Add a case to `goldenScreens()` in `internal/tui/golden_test.go`.
+3. To publish it as a documentation image, add an entry to
+   `documentationAssets()` in `internal/tui/docassets_test.go`.
+4. Run `make tui-fixtures tui-assets` and commit the generated files.
+
+Fixtures and images left behind after a screen is removed are caught by
+`TestGoldenFixturesAreAllExercised` and `TestDocumentationAssetsAreAllPublished`.
+
 ### Cleaning
 
 ```bash
