@@ -2,7 +2,7 @@ package complexity
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"strings"
 
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
@@ -90,7 +90,9 @@ func findCSharpFunctions(root *sitter.Node, content []byte) []cSharpFunctionInfo
 	`
 	q, err := sitter.NewQuery([]byte(queryStr), csharp.GetLanguage())
 	if err != nil {
-		fmt.Printf("Tree-Sitter query parse error: %v\n", err)
+		// Routed through the standard logger rather than stdout: a direct write
+		// here would paint over the TUI while a scan is running.
+		log.Printf("csharp analyzer: tree-sitter query parse error: %v", err)
 		return nil
 	}
 	qc := sitter.NewQueryCursor()

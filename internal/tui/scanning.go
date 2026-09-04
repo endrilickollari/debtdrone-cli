@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,17 +18,35 @@ import (
 	"github.com/google/uuid"
 )
 
+// scanRunID identifies one scan attempt. Every message a scan emits carries the
+// id of the run that produced it, so results from a superseded or cancelled
+// scan are discarded instead of overwriting the run the reader is watching.
+type scanRunID uint64
+
 type scanProgressMsg struct {
-	Task     string
-	Progress float64
+	runID     scanRunID
+	stage     string
+	completed int
+	total     int
 }
 
 type scanCompleteMsg struct {
+	runID    scanRunID
 	path     string
 	issues   []models.TechnicalDebtIssue
 	warnings []scanner.Warning
 	err      error
 }
+
+// scanTickMsg animates the scanning view. It is distinct from the shared
+// tickMsg so a superseded scan's animation cannot outlive its run or interfere
+// with the self-update view's ticker.
+type scanTickMsg struct{ runID scanRunID }
+
+// scanMessageBuffer keeps the scanner from stalling on progress reporting
+// between update-loop reads. Sends also abort on cancellation, so a cancelled
+// scan can never leak a goroutine blocked on this channel.
+const scanMessageBuffer = 32
 
 type scanDisplayOptions struct {
 	outputFormat    string
@@ -44,31 +60,66 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second/10, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-func startScan(path string, options service.ScanOptions, historyEnabled bool, progressChan chan tea.Msg) tea.Cmd {
-	log.SetOutput(io.Discard)
+func scanTickCmd(runID scanRunID) tea.Cmd {
+	return tea.Tick(time.Second/10, func(time.Time) tea.Msg { return scanTickMsg{runID: runID} })
+}
+
+// listenForScanMessages waits for the next message from one scan. Both inputs
+// are captured by value so a listener started for an earlier run can neither
+// consume from its replacement nor remain blocked after its run is cancelled.
+func listenForScanMessages(done <-chan struct{}, messages <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-messages:
+			return msg
+		case <-done:
+			return nil
+		}
+	}
+}
+
+// startScan runs the scan off the update loop. The command returns immediately
+// and the scan reports back through messages, so rendering and key handling
+// stay responsive for the whole run. ctx cancellation both stops the scanner
+// and releases this goroutine from any pending send.
+func startScan(
+	ctx context.Context,
+	runID scanRunID,
+	path string,
+	options service.ScanOptions,
+	historyEnabled bool,
+	messages chan<- tea.Msg,
+) tea.Cmd {
 	return func() tea.Msg {
 		go func() {
-			svc := service.NewScanServiceWithHistoryEnabled(historyEnabled)
-			ctx := context.WithValue(context.Background(), "isCLI", true)
-
-			result, err := svc.RunDetailed(ctx, path, options, func(p service.ScanProgress) {
-				progressChan <- scanProgressMsg{
-					Task:     "Running " + p.AnalyzerName + "...",
-					Progress: float64(p.Index) / float64(p.Total),
+			send := func(msg tea.Msg) {
+				select {
+				case messages <- msg:
+				case <-ctx.Done():
 				}
-				time.Sleep(300 * time.Millisecond)
-			})
-
-			log.SetOutput(os.Stderr)
-
-			if err != nil && (!service.IsPartialFailure(err) || len(result.Issues) == 0) {
-				progressChan <- scanCompleteMsg{path: path, issues: result.Issues, warnings: result.Warnings, err: err}
-				return
 			}
 
-			progressChan <- scanProgressMsg{Task: "Finalizing results...", Progress: 1.0}
-			time.Sleep(500 * time.Millisecond)
-			progressChan <- scanCompleteMsg{path: path, issues: result.Issues, warnings: result.Warnings, err: err}
+			svc := service.NewScanServiceWithHistoryEnabled(historyEnabled)
+			result, err := svc.RunDetailed(ctx, path, options, func(p service.ScanProgress) {
+				stage := ""
+				if p.Started {
+					stage = p.AnalyzerName
+				}
+				send(scanProgressMsg{
+					runID:     runID,
+					stage:     stage,
+					completed: p.Completed,
+					total:     p.Total,
+				})
+			})
+
+			send(scanCompleteMsg{
+				runID:    runID,
+				path:     path,
+				issues:   result.Issues,
+				warnings: result.Warnings,
+				err:      err,
+			})
 		}()
 		return nil
 	}
@@ -86,12 +137,22 @@ const (
 type ScanModel struct {
 	phase        scanPhase
 	scanPath     string
-	scanTask     string
-	scanProgress float64
 	spinnerFrame int
 	scanChan     chan tea.Msg
+	scanDone     <-chan struct{}
 	outputFormat string
 	display      scanDisplayOptions
+
+	// Active scan lifecycle. runID identifies the run whose messages the model
+	// accepts; cancel stops it. Progress is reported as analyzers completed out
+	// of the total rather than as a synthetic percentage.
+	runID              scanRunID
+	cancel             context.CancelFunc
+	stage              string
+	completedAnalyzers int
+	totalAnalyzers     int
+	startedAt          time.Time
+	elapsed            time.Duration
 
 	err     error
 	warning error
@@ -179,25 +240,60 @@ func newScanModel() *ScanModel {
 	}
 }
 
-// Start begins a new repository scan.
+// Start begins a new repository scan. Any scan still running is cancelled and
+// superseded first, so a second start can neither race the active scan nor let
+// its results overwrite the newer run.
 func (m *ScanModel) Start(path string, options service.ScanOptions, display scanDisplayOptions, historyEnabled bool) tea.Cmd {
+	m.Cancel()
+
+	m.runID++
+	runID := m.runID
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	m.scanDone = ctx.Done()
+
 	m.phase = scanRunning
 	m.scanPath = path
-	m.scanTask = "Initializing scan..."
-	m.scanProgress = 0
+	m.stage = ""
+	m.completedAnalyzers = 0
+	m.totalAnalyzers = 0
+	m.startedAt = time.Now()
+	m.elapsed = 0
 	m.spinnerFrame = 0
 	m.outputFormat = display.outputFormat
 	m.display = display
 	m.err = nil
 	m.warning = nil
 	m.issues = nil
-	m.scanChan = make(chan tea.Msg, 10)
+
+	messages := make(chan tea.Msg, scanMessageBuffer)
+	m.scanChan = messages
 
 	return tea.Batch(
-		startScan(path, options, historyEnabled, m.scanChan),
-		m.listenForScanProgress(),
-		tickCmd(),
+		startScan(ctx, runID, path, options, historyEnabled, messages),
+		listenForScanMessages(m.scanDone, messages),
+		scanTickCmd(runID),
 	)
+}
+
+// Cancel stops the active scan, if any, and releases its goroutine. Messages
+// already in flight for that run are ignored because the run is superseded.
+// Calling it when no scan is running is a no-op.
+func (m *ScanModel) Cancel() {
+	if m.cancel == nil {
+		return
+	}
+	m.cancel()
+	m.cancel = nil
+	m.scanDone = nil
+	// Advancing the run id retires every message the cancelled scan may still
+	// deliver, including one that was already queued before cancellation.
+	m.runID++
+}
+
+// Scanning reports whether a scan is currently running.
+func (m *ScanModel) Scanning() bool {
+	return m.phase == scanRunning
 }
 
 // LoadResults displays historical scan data.
@@ -217,10 +313,6 @@ func (m *ScanModel) LoadResults(entry historyEntry, outputFormat string) {
 	}
 }
 
-func (m *ScanModel) listenForScanProgress() tea.Cmd {
-	return func() tea.Msg { return <-m.scanChan }
-}
-
 func (m *ScanModel) Init() tea.Cmd { return nil }
 
 func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -238,19 +330,37 @@ func (m *ScanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tickMsg:
-		if m.phase == scanRunning {
-			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerChars)
-			return m, tickCmd()
+	case scanTickMsg:
+		// A tick from a superseded run stops here rather than driving a second
+		// animation loop alongside the current scan.
+		if msg.runID != m.runID || m.phase != scanRunning {
+			return m, nil
 		}
-		return m, nil
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerChars)
+		m.elapsed = time.Since(m.startedAt)
+		return m, scanTickCmd(msg.runID)
 
 	case scanProgressMsg:
-		m.scanTask = msg.Task
-		m.scanProgress = msg.Progress
-		return m, m.listenForScanProgress()
+		if msg.runID != m.runID {
+			return m, nil
+		}
+		if msg.stage != "" {
+			m.stage = msg.stage
+		}
+		m.completedAnalyzers = msg.completed
+		m.totalAnalyzers = msg.total
+		return m, listenForScanMessages(m.scanDone, m.scanChan)
 
 	case scanCompleteMsg:
+		if msg.runID != m.runID {
+			return m, nil
+		}
+		if m.cancel != nil {
+			m.cancel()
+		}
+		m.cancel = nil
+		m.scanDone = nil
+		m.elapsed = time.Since(m.startedAt)
 		m.phase = scanResults
 
 		if msg.err != nil && len(msg.issues) == 0 {
@@ -322,7 +432,13 @@ func prepareDisplayIssues(issues []models.TechnicalDebtIssue, options scanDispla
 // active phase and whether output format is JSON (scroll-only) vs text (list).
 func (m *ScanModel) handleKey(str string) (tea.Model, tea.Cmd) {
 	if m.phase == scanRunning {
-		// During an active scan we only allow ctrl+c (handled by AppModel).
+		// A running scan accepts cancellation only. Everything else is ignored
+		// so a stray key cannot mutate results that do not exist yet.
+		if str == "esc" || str == "q" {
+			m.Cancel()
+			m.phase = scanIdle
+			return m, func() tea.Msg { return NavigateMsg{State: stateMenu} }
+		}
 		return m, nil
 	}
 
@@ -545,25 +661,33 @@ func (m *ScanModel) renderScanning() string {
 	pathColor := lipgloss.Color("#8899bb")
 	progressColor := lipgloss.Color("#5af78e")
 
-	const barWidth = 40
-	completed := int(m.scanProgress * float64(barWidth))
-	if completed > barWidth {
-		completed = barWidth
+	stage := m.stage
+	if stage == "" {
+		stage = "Preparing analyzers"
 	}
-	bar := lipgloss.NewStyle().Foreground(progressColor).Render(strings.Repeat("█", completed)) +
-		lipgloss.NewStyle().Foreground(dimColor).Render(strings.Repeat("░", barWidth-completed))
-	percentage := fmt.Sprintf(" %3.0f%%", m.scanProgress*100)
 
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render(spinner+" Analyzing Repository…"),
+	rows := []string{
+		lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render(spinner + " Analyzing Repository…"),
 		"",
-		lipgloss.NewStyle().Foreground(dimColor).Render("Task  ")+
-			lipgloss.NewStyle().Foreground(colorText).Render(m.scanTask),
-		lipgloss.NewStyle().Foreground(dimColor).Render("Path  ")+
+		lipgloss.NewStyle().Foreground(dimColor).Render("Stage    ") +
+			lipgloss.NewStyle().Foreground(colorText).Render(stage),
+		lipgloss.NewStyle().Foreground(dimColor).Render("Path     ") +
 			lipgloss.NewStyle().Foreground(pathColor).Render(truncate(m.scanPath, 60)),
-		"",
-		bar+lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(percentage),
-	)
+		lipgloss.NewStyle().Foreground(dimColor).Render("Elapsed  ") +
+			lipgloss.NewStyle().Foreground(colorText).Render(formatElapsed(m.elapsed)),
+	}
+
+	// The bar counts analyzers that have actually finished. Until the scanner
+	// reports a total there is nothing honest to draw, so the view shows the
+	// stage and elapsed time alone rather than inventing a percentage.
+	if m.totalAnalyzers > 0 {
+		const barWidth = 40
+		filled := clamp(m.completedAnalyzers*barWidth/m.totalAnalyzers, 0, barWidth)
+		bar := lipgloss.NewStyle().Foreground(progressColor).Render(strings.Repeat("█", filled)) +
+			lipgloss.NewStyle().Foreground(dimColor).Render(strings.Repeat("░", barWidth-filled))
+		rows = append(rows, "", bar+lipgloss.NewStyle().Foreground(colorText).Bold(true).
+			Render(fmt.Sprintf("  %d/%d analyzers", m.completedAnalyzers, m.totalAnalyzers)))
+	}
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -571,21 +695,43 @@ func (m *ScanModel) renderScanning() string {
 		Padding(1, 4).
 		Width(boxWidth).
 		Background(lipgloss.Color("#1e2035")).
-		Render(body)
+		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	hint := lipgloss.NewStyle().Foreground(dimColor).Render("ctrl+c to cancel")
+	hint := lipgloss.NewStyle().Foreground(dimColor).
+		Render("esc  cancel and return to the dashboard        ctrl+c  quit")
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
+}
+
+// formatElapsed renders a running duration at whole-second resolution, which is
+// the precision the scan phase can honestly claim.
+func formatElapsed(elapsed time.Duration) string {
+	if elapsed < time.Second {
+		return "0s"
+	}
+	return elapsed.Truncate(time.Second).String()
 }
 
 func (m *ScanModel) renderResults() string {
 	if m.err != nil {
-		body := lipgloss.NewStyle().Foreground(colorError).Bold(true).Render("Scan failed") +
-			"\n" + lipgloss.NewStyle().Foreground(colorDim).Render(m.err.Error())
+		// The failure state carries the inputs needed to retry or troubleshoot:
+		// which repository was scanned, how long it ran before failing, and the
+		// unabridged scanner error.
+		body := lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.NewStyle().Foreground(colorError).Bold(true).Render("Scan failed"),
+			"",
+			lipgloss.NewStyle().Foreground(colorDim).Render("Repository  ")+
+				lipgloss.NewStyle().Foreground(colorFilePath).Render(truncate(m.scanPath, 80)),
+			lipgloss.NewStyle().Foreground(colorDim).Render("Failed after  ")+
+				lipgloss.NewStyle().Foreground(colorText).Render(formatElapsed(m.elapsed)),
+			"",
+			lipgloss.NewStyle().Foreground(colorText).Render(m.err.Error()),
+		)
 		box := lipgloss.NewStyle().
 			BorderLeft(true).BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(colorError).
 			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1).Width(150).
 			Background(colorBg).Render(body)
-		hint := lipgloss.NewStyle().Foreground(colorDim).Render("r  rescan    q  quit")
+		hint := lipgloss.NewStyle().Foreground(colorDim).
+			Render("r  retry this scan        esc  back to the dashboard        ctrl+c  quit")
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
 	}
 

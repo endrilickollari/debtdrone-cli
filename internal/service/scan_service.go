@@ -18,10 +18,17 @@ type ScanOptions struct {
 	Coverage      bool
 }
 
+// ScanProgress reports scanner progress to a consumer. Completed counts the
+// analyzers that have finished or failed, which is the only honest measure of
+// how much of the scan is done; Index is the analyzer's position in the run.
 type ScanProgress struct {
 	AnalyzerName string
 	Index        int
+	Completed    int
 	Total        int
+	// Started distinguishes an analyzer beginning from one finishing, so a
+	// consumer can label the current stage without misreporting the count.
+	Started bool
 }
 
 type ScanResult struct {
@@ -108,9 +115,19 @@ func (s *ScanService) RunReport(ctx context.Context, path string, opts ScanOptio
 		Security:   scanner.SecurityOptions{Enabled: opts.SecurityScan},
 		Coverage:   scanner.CoverageOptions{Enabled: opts.Coverage},
 		OnProgress: func(event scanner.ProgressEvent) {
-			if onProgress != nil && event.Phase == scanner.ProgressStarted {
-				onProgress(ScanProgress{AnalyzerName: event.AnalyzerName, Index: event.Index, Total: event.Total})
+			if onProgress == nil {
+				return
 			}
+			// Finished and failed events are forwarded too: they carry the
+			// completed count a consumer needs to report real progress rather
+			// than inferring it from the analyzers that merely started.
+			onProgress(ScanProgress{
+				AnalyzerName: event.AnalyzerName,
+				Index:        event.Index,
+				Completed:    event.Completed,
+				Total:        event.Total,
+				Started:      event.Phase == scanner.ProgressStarted,
+			})
 		},
 	})
 
