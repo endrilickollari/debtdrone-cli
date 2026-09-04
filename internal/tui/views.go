@@ -7,6 +7,14 @@ import tea "charm.land/bubbletea/v2"
 // alt-screen mode. The detailed rendering logic lives in each child model's
 // render() method; this function is intentionally minimal.
 func (m *AppModel) View() tea.View {
+	// A terminal below the supported size is reported once, here, rather than
+	// leaving every screen to degrade into an unreadable layout of its own.
+	if layoutFor(m.width, m.height).tooSmall() {
+		v := tea.NewView(renderTooSmall(m.width, m.height))
+		v.AltScreen = true
+		return v
+	}
+
 	var body string
 	switch m.activeState {
 	case stateMenu:

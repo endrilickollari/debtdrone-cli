@@ -143,6 +143,7 @@ func TestApplicationBroadcastsResizeToEveryScreen(t *testing.T) {
 	assert.Equal(t, narrowWidth, app.scan.width)
 	assert.Equal(t, narrowWidth, app.history.width)
 	assert.Equal(t, narrowWidth, app.config.width)
+	assert.Equal(t, narrowWidth, app.update.width)
 }
 
 func sizeName(width, height int) string {

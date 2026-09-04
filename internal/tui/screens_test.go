@@ -10,6 +10,7 @@ import (
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/localhistory"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	"github.com/endrilickollari/debtdrone-cli/v2/internal/service"
+	"github.com/google/uuid"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/require"
 )
@@ -158,6 +159,9 @@ func historyScreen(t *testing.T, width, height int) *HistoryModel {
 	completed := fixtureNow
 	duration := 84
 	run := models.AnalysisRun{
+		// A real run always carries an id; the zero value is the sentinel the
+		// detail pane uses for "nothing selected".
+		ID:                      uuid.MustParse("3f2b1c04-9a7d-4f18-9c2e-6b5a0d7e1234"),
 		StartedAt:               fixtureNow.Add(-84 * time.Second),
 		CompletedAt:             &completed,
 		DurationSeconds:         &duration,

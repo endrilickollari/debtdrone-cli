@@ -298,13 +298,21 @@ func (m *ConfigModel) View() tea.View {
 }
 
 func (m *ConfigModel) render() string {
-	const boxWidth = 104
-	const innerWidth = boxWidth - 6
+	// The editor fills the terminal up to its comfortable maximum, so it never
+	// renders wider than the window it is drawn in.
+	boxWidth := min(104, max(m.width-2, 20))
+	innerWidth := boxWidth - 6
 
 	const keyW = 22
 	const valW = 20
 	const gap = 2
-	descW := innerWidth - keyW - valW - (gap * 2)
+	const markerW = 2
+	// The description column is the first thing to go when the terminal cannot
+	// hold the key and value columns alongside it. Kept below its minimum it
+	// would wrap one word per line, which is far less readable than dropping it.
+	const minimumDescW = 18
+	descW := innerWidth - markerW - keyW - valW - (gap * 2)
+	showDescription := descW >= minimumDescW
 
 	titleStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
 
@@ -350,6 +358,7 @@ func (m *ConfigModel) render() string {
 	normalRow := lipgloss.NewStyle().Width(innerWidth)
 
 	var b strings.Builder
+	cursorLine := 0
 	b.WriteString(titleStyle.Render("Settings"))
 	b.WriteString("\n\n")
 
@@ -382,13 +391,22 @@ func (m *ConfigModel) render() string {
 			keyRendered = keyNormalStyle.Render(item.Key)
 		}
 
-		row := keyRendered +
-			strings.Repeat(" ", gap) +
-			descStyle.Render(item.Description) +
-			strings.Repeat(" ", gap) +
-			valueBadge(item, i)
+		marker := "  "
+		if i == m.cursor {
+			marker = "› "
+		}
+		row := marker + keyRendered + strings.Repeat(" ", gap)
+		if showDescription {
+			// Truncated rather than wrapped: a description that spills onto a
+			// second line turns every setting into a two-row entry.
+			row += descStyle.Render(truncate(item.Description, descW)) + strings.Repeat(" ", gap)
+		}
+		row += valueBadge(item, i)
 
 		if i == m.cursor {
+			// Recorded so the scrolling window below can keep the focused row
+			// on screen.
+			cursorLine = strings.Count(b.String(), "\n")
 			b.WriteString(rowBg.Render(row))
 		} else {
 			b.WriteString(normalRow.Render(row))
@@ -396,7 +414,6 @@ func (m *ConfigModel) render() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim)
 	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3f58")).Render("  ·  ")
 	k := func(s string) string { return lipgloss.NewStyle().Foreground(colorText).Render(s) }
@@ -417,11 +434,29 @@ func (m *ConfigModel) render() string {
 				ke("esc") + hintStyle.Render(" cancel"),
 		)
 	}
-	b.WriteString(hints)
+	// The settings list scrolls when it is taller than the terminal, keeping the
+	// row being edited on screen. Without this the lower sections render past
+	// the bottom edge, where they can be selected but never read.
+	settings := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	const boxChrome = 4 // border and vertical padding
+	// Measured at the box's inner width: the hint line wraps on a narrow
+	// terminal, and an unwrapped measurement would under-reserve its rows.
+	hintHeight := lipgloss.Height(lipgloss.NewStyle().Width(innerWidth).Render(hints))
+	errorHeight := 0
 	if m.validationError != "" {
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(colorCritical).Render(m.validationError))
+		errorHeight = lipgloss.Height(lipgloss.NewStyle().Width(innerWidth).Render(m.validationError)) + 1
 	}
+	visible := windowLines(settings, m.height-boxChrome-hintHeight-errorHeight-1, cursorLine)
+
+	var content strings.Builder
+	content.WriteString(strings.Join(visible, "\n"))
+	content.WriteString("\n\n")
+	content.WriteString(hints)
+	if m.validationError != "" {
+		content.WriteString("\n")
+		content.WriteString(lipgloss.NewStyle().Foreground(colorCritical).Width(innerWidth).Render(m.validationError))
+	}
+	b = content
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

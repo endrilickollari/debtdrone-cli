@@ -58,11 +58,13 @@ type MenuModel struct {
 	pathComplete       bool
 	inputActive        bool
 	showingHelp        bool
+	helpOffset         int
 	err                string
 
 	focus          int
 	recent         []localhistory.Record
 	recentDetail   *localhistory.Record
+	recentOffset   int
 	historyLoading bool
 	historyErr     string
 	currentPath    string
@@ -114,13 +116,16 @@ func (m *MenuModel) Reset() {
 	m.pathComplete = false
 	m.inputActive = false
 	m.showingHelp = false
+	m.helpOffset = 0
 	m.recentDetail = nil
+	m.recentOffset = 0
 	m.err = ""
 	m.clampFocus()
 }
 
 func (m *MenuModel) ShowHelp() {
 	m.showingHelp = true
+	m.helpOffset = 0
 }
 
 func (m *MenuModel) Init() tea.Cmd {
@@ -161,10 +166,24 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		str := msg.String()
 		if m.showingHelp {
-			if str == "esc" || str == "q" {
+			switch str {
+			case "esc", "q":
 				m.showingHelp = false
 				return m, func() tea.Msg { return NavigateMsg{State: stateMenu} }
+			case "j", "down":
+				m.helpOffset++
+			case "k", "up":
+				m.helpOffset--
+			case "pgdown":
+				m.helpOffset += m.overlayViewportHeight()
+			case "pgup":
+				m.helpOffset -= m.overlayViewportHeight()
+			case "g", "home":
+				m.helpOffset = 0
+			case "G", "end":
+				m.helpOffset = len(m.helpLines(max(m.width-6, 1)))
 			}
+			m.helpOffset = max(m.helpOffset, 0)
 			return m, nil
 		}
 		if m.recentDetail != nil {
@@ -216,11 +235,25 @@ func (m *MenuModel) handleRecentDetailKey(str string) (tea.Model, tea.Cmd) {
 	switch str {
 	case "esc", "q", "enter":
 		m.recentDetail = nil
+		m.recentOffset = 0
 	case "s":
 		return m.startCurrentScan()
 	case "h":
 		m.recentDetail = nil
+		m.recentOffset = 0
 		return m, func() tea.Msg { return NavigateMsg{State: stateHistory} }
+	case "j", "down":
+		m.recentOffset++
+	case "k", "up":
+		m.recentOffset = max(m.recentOffset-1, 0)
+	case "pgdown":
+		m.recentOffset += m.overlayViewportHeight()
+	case "pgup":
+		m.recentOffset = max(m.recentOffset-m.overlayViewportHeight(), 0)
+	case "g", "home":
+		m.recentOffset = 0
+	case "G", "end":
+		m.recentOffset = 1 << 30
 	}
 	return m, nil
 }
@@ -309,6 +342,7 @@ func (m *MenuModel) openRecent(index int) {
 	}
 	record := m.recent[index]
 	m.recentDetail = &record
+	m.recentOffset = 0
 }
 
 func (m *MenuModel) openPathInput() {
@@ -497,6 +531,18 @@ func (m *MenuModel) renderInputLine() string {
 	return m.input[:m.cursorPos] + "█" + m.input[m.cursorPos:]
 }
 
+func (m *MenuModel) renderInputLineWithin(width int) string {
+	line := m.renderInputLine()
+	if lipgloss.Width(line) <= width {
+		return line
+	}
+	cursor := clamp(m.cursorPos, 0, len(m.input))
+	if lipgloss.Width(m.input[:cursor]) >= width-1 {
+		return truncateLeft(m.input[:cursor]+"█", width)
+	}
+	return truncate(line, width)
+}
+
 func (m *MenuModel) View() tea.View {
 	return tea.NewView(m.render())
 }
@@ -513,8 +559,9 @@ func (m *MenuModel) render() string {
 }
 
 func (m *MenuModel) renderDashboard() string {
+	view := layoutFor(m.width, m.height)
 	contentWidth := min(max(m.width-8, 1), 118)
-	if m.width < 90 {
+	if view.compact() {
 		contentWidth = max(m.width, 1)
 	}
 	titleStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
@@ -523,29 +570,43 @@ func (m *MenuModel) renderDashboard() string {
 	if repository == "." || repository == string(filepath.Separator) {
 		repository = m.currentPath
 	}
-	header := titleStyle.Render("DEBTDRONE") + "  " + dimStyle.Render("LOCAL SCANNER  /  "+repository)
+	brand := titleStyle.Render("DEBTDRONE")
+	contextWidth := max(contentWidth-lipgloss.Width("DEBTDRONE  "), 1)
+	context := truncate("LOCAL SCANNER  /  "+repository, contextWidth)
+	header := brand + "  " + dimStyle.Render(context)
 	subtitleText := "Choose an action. Shortcuts accelerate the workflow; they are never required."
 	if lipgloss.Width(subtitleText) > contentWidth {
 		subtitleText = "Choose an action. Every workflow is available without shortcuts."
 	}
-	subtitle := lipgloss.NewStyle().Foreground(colorText).Render(subtitleText)
+	// The shorter wording can still exceed a very narrow terminal.
+	subtitle := lipgloss.NewStyle().Foreground(colorText).Render(truncate(subtitleText, contentWidth))
 
-	actionWidth := 42
-	gapWidth := 3
-	if contentWidth < 90 {
-		actionWidth = 32
-		gapWidth = 1
-	}
-	// Width excludes each panel's border, so reserve two cells per panel in
-	// addition to the visible gap between them.
-	recentWidth := contentWidth - actionWidth - gapWidth - 4
-	actions := m.renderActions(actionWidth)
-	recent := m.renderRecentScans(max(recentWidth, 33))
+	// Below the compact breakpoint the two panels stack. Side by side they would
+	// each be squeezed until the recent-scan rows wrapped mid-line, which reads
+	// as broken rather than dense.
 	var body string
-	if recentWidth >= 33 {
-		body = lipgloss.JoinHorizontal(lipgloss.Top, actions, strings.Repeat(" ", gapWidth), recent)
+	if view.compact() {
+		actions := m.renderActions(contentWidth - 2)
+		// Stacking costs vertical space, so the recent panel switches to
+		// single-line rows when the two panels would not otherwise fit. Every
+		// scan stays listed, which keeps focus order intact.
+		const surroundingRows = 5 // header, subtitle, blank, blank, hints
+		remaining := m.height - lipgloss.Height(actions) - surroundingRows
+		recent := m.renderRecentScans(contentWidth-2, false)
+		if lipgloss.Height(recent) > remaining {
+			recent = m.renderRecentScans(contentWidth-2, true)
+		}
+		body = lipgloss.JoinVertical(lipgloss.Left, actions, "", recent)
 	} else {
-		body = lipgloss.JoinVertical(lipgloss.Left, actions, "", m.renderRecentScans(contentWidth))
+		const actionWidth = 42
+		const gapWidth = 3
+		// Width excludes each panel's border, so reserve two cells per panel in
+		// addition to the visible gap between them.
+		recentWidth := contentWidth - actionWidth - gapWidth - 4
+		body = lipgloss.JoinHorizontal(lipgloss.Top,
+			m.renderActions(actionWidth),
+			strings.Repeat(" ", gapWidth),
+			m.renderRecentScans(recentWidth, false))
 	}
 
 	hintKey := lipgloss.NewStyle().Foreground(colorText).Bold(true)
@@ -556,19 +617,47 @@ func (m *MenuModel) renderDashboard() string {
 		hintKey.Render("?") + hintText.Render(" help   ") +
 		hintKey.Render("q") + hintText.Render(" quit")
 
-	var content strings.Builder
-	content.WriteString(header)
-	content.WriteString("\n")
-	content.WriteString(subtitle)
-	content.WriteString("\n\n")
-	content.WriteString(body)
-	if m.err != "" {
+	compose := func(withSubtitle bool, panels string) string {
+		var content strings.Builder
+		content.WriteString(header)
 		content.WriteString("\n")
-		content.WriteString(lipgloss.NewStyle().Foreground(colorError).Render("! " + m.err))
+		if withSubtitle {
+			content.WriteString(subtitle)
+			content.WriteString("\n")
+		}
+		content.WriteString("\n")
+		content.WriteString(panels)
+		if m.err != "" {
+			content.WriteString("\n")
+			content.WriteString(lipgloss.NewStyle().Foreground(colorError).
+				Render(truncate("! "+m.err, contentWidth)))
+		}
+		content.WriteString("\n\n")
+		content.WriteString(hints)
+		return content.String()
 	}
-	content.WriteString("\n\n")
-	content.WriteString(hints)
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content.String())
+
+	// A short terminal gives up explanatory chrome first. If both panels cannot
+	// fit, it shows the panel containing the focused row; moving across the panel
+	// boundary swaps the visible panel, so no selectable item becomes invisible.
+	actionsOnly := m.renderActions(contentWidth - 2)
+	if !view.compact() {
+		actionsOnly = m.renderActions(42)
+	}
+	focusedPanel := actionsOnly
+	if m.focus >= len(dashboardActions) && len(m.recent) > 0 {
+		focusedPanel = m.renderRecentScans(contentWidth-2, true)
+	}
+	for _, candidate := range []string{
+		compose(true, body),
+		compose(false, body),
+		compose(false, focusedPanel),
+	} {
+		if lipgloss.Height(candidate) <= m.height {
+			return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, candidate)
+		}
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, compose(false, focusedPanel))
 }
 
 func (m *MenuModel) renderActions(width int) string {
@@ -601,11 +690,24 @@ func (m *MenuModel) renderActions(width int) string {
 			body.WriteString("\n")
 		}
 	}
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
-		Padding(1).Width(width).Render(strings.TrimSuffix(body.String(), "\n"))
+	return panelStyle(m.width, width).Render(strings.TrimSuffix(body.String(), "\n"))
 }
 
-func (m *MenuModel) renderRecentScans(width int) string {
+// panelStyle frames a dashboard panel. Vertical padding is dropped on a narrow
+// terminal, where the two stacked panels need every row they can get.
+func panelStyle(terminalWidth, width int) lipgloss.Style {
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAccentBlue).Width(width)
+	if layoutFor(terminalWidth, 0).compact() {
+		return style.Padding(0, 1)
+	}
+	return style.Padding(1)
+}
+
+// renderRecentScans draws the recent-scan panel. When dense, each scan takes a
+// single line instead of three, which is what lets the stacked layout fit a
+// short terminal without dropping scans or breaking focus order.
+func (m *MenuModel) renderRecentScans(width int, dense bool) string {
 	innerWidth := max(width-4, 28)
 	headerStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
@@ -632,71 +734,104 @@ func (m *MenuModel) renderRecentScans(width int) string {
 	default:
 		for index, record := range m.recent {
 			selected := m.focus == len(dashboardActions)+index
-			body.WriteString(m.renderRecentRow(record, innerWidth, selected))
+			body.WriteString(m.renderRecentRow(record, innerWidth, selected, dense))
 			if index < len(m.recent)-1 {
 				body.WriteString("\n")
 			}
 		}
 	}
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
-		Padding(1).Width(width).Render(body.String())
+	return panelStyle(m.width, width).Render(body.String())
 }
 
-func (m *MenuModel) renderRecentRow(record localhistory.Record, width int, selected bool) string {
+func (m *MenuModel) renderRecentRow(record localhistory.Record, width int, selected, dense bool) string {
 	statusColor := colorOK
 	if record.Outcome == localhistory.OutcomePartial {
 		statusColor = colorHigh
 	}
-	status := lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(strings.ToUpper(string(record.Outcome)))
-	repository := truncate(record.Repository, max(width-lipgloss.Width(status)-3, 10))
-	gap := max(width-lipgloss.Width(repository)-lipgloss.Width(status)-1, 1)
-	first := repository + strings.Repeat(" ", gap) + status
-	second := record.CompletedAt.UTC().Format("Jan 02 15:04 UTC") + fmt.Sprintf(" · %d findings", record.Summary.Findings)
-	third := fmt.Sprintf("C:%d  H:%d  M:%d  L:%d", record.Summary.Critical, record.Summary.High, record.Summary.Medium, record.Summary.Low)
-	row := first + "\n" + lipgloss.NewStyle().Foreground(colorDim).Render(second) + "\n" +
-		lipgloss.NewStyle().Foreground(colorFilePath).Render(third)
+	// A marker keeps the focused row identifiable when the highlight colour is
+	// unavailable, and each line is bounded to the panel so none of them wrap.
+	marker := "  "
 	if selected {
-		return lipgloss.NewStyle().Background(colorSelectedBg).Foreground(colorText).PaddingLeft(1).Width(width).Render(row)
+		marker = "› "
 	}
-	return lipgloss.NewStyle().PaddingLeft(1).Width(width).Render(row)
+	available := max(width-lipgloss.Width(marker)-1, 12)
+
+	status := lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(strings.ToUpper(string(record.Outcome)))
+	repository := truncate(record.Repository, max(available-lipgloss.Width(status)-2, 8))
+	gap := max(available-lipgloss.Width(repository)-lipgloss.Width(status), 1)
+	first := repository + strings.Repeat(" ", gap) + status
+
+	second := truncate(record.CompletedAt.UTC().Format("Jan 02 15:04 UTC")+
+		fmt.Sprintf(" · %d findings", record.Summary.Findings), available)
+	third := truncate(fmt.Sprintf("C:%d  H:%d  M:%d  L:%d",
+		record.Summary.Critical, record.Summary.High, record.Summary.Medium, record.Summary.Low), available)
+
+	markerStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
+	var row string
+	if dense {
+		// Repository, outcome and finding count on one line; the severity
+		// breakdown is the detail a short terminal gives up first.
+		summary := truncate(fmt.Sprintf("%s · %d findings", record.Repository, record.Summary.Findings),
+			max(available-lipgloss.Width(status)-2, 8))
+		gap := max(available-lipgloss.Width(summary)-lipgloss.Width(status), 1)
+		row = markerStyle.Render(marker) + summary + strings.Repeat(" ", gap) + status
+	} else {
+		row = markerStyle.Render(marker) + first + "\n" +
+			strings.Repeat(" ", lipgloss.Width(marker)) + lipgloss.NewStyle().Foreground(colorDim).Render(second) + "\n" +
+			strings.Repeat(" ", lipgloss.Width(marker)) + lipgloss.NewStyle().Foreground(colorFilePath).Render(third)
+	}
+
+	if selected {
+		return lipgloss.NewStyle().Background(colorSelectedBg).Foreground(colorText).Width(width).Render(row)
+	}
+	return lipgloss.NewStyle().Width(width).Render(row)
 }
 
 func (m *MenuModel) renderCommandPalette() string {
-	boxWidth := min(max(m.width-8, 60), 100)
-	innerWidth := max(boxWidth-6, 24)
+	boxWidth := min(100, max(m.width-2, 20))
+	innerWidth := max(boxWidth-6, 1)
 	headerStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
-	input := lipgloss.NewStyle().Foreground(lipgloss.Color("#89ddff")).Render(m.renderInputLine())
+	input := lipgloss.NewStyle().Foreground(lipgloss.Color("#89ddff")).
+		Render(m.renderInputLineWithin(max(innerWidth-4, 1)))
 	inputBox := lipgloss.NewStyle().BorderLeft(true).
 		BorderStyle(lipgloss.Border{Left: "│"}).BorderForeground(colorAccentBlue).
 		Padding(1, 2).Width(innerWidth).Background(colorBg).Render(input)
 
-	var body strings.Builder
-	body.WriteString(headerStyle.Render("COMMAND PALETTE"))
-	body.WriteString("\n")
-	body.WriteString(dimStyle.Render("Type a command or choose a repository path."))
-	body.WriteString("\n\n")
-	body.WriteString(inputBox)
+	sections := []string{
+		headerStyle.Render(truncate("COMMAND PALETTE", innerWidth)),
+		dimStyle.Render(truncate("Type a command or choose a repository path.", innerWidth)),
+		"",
+		inputBox,
+	}
 	if len(m.suggestions) > 0 {
-		body.WriteString("\n")
+		rows := make([]string, 0, len(m.suggestions))
 		for index, suggestion := range m.suggestions {
 			annotation := m.suggestionAnnotation(suggestion)
-			row := "  " + suggestion
+			marker := "  "
+			if index == m.selectedSuggestion {
+				marker = "› "
+			}
+			row := marker + suggestion
 			if annotation != "" {
 				row += "  " + annotation
 			}
+			row = truncate(row, innerWidth)
 			style := lipgloss.NewStyle().Foreground(colorFilePath).Width(innerWidth)
 			if index == m.selectedSuggestion {
 				style = style.Foreground(colorAccentBlue).Background(colorSelectedBg).Bold(true)
 			}
-			body.WriteString(style.Render(row))
-			body.WriteString("\n")
+			rows = append(rows, style.Render(row))
 		}
+		focus := max(m.selectedSuggestion, 0)
+		visible := windowLines(rows, max(m.height-12, 1), focus)
+		sections = append(sections, strings.Join(visible, "\n"))
 	}
-	body.WriteString("\n")
-	body.WriteString(dimStyle.Render("tab / ↑↓ choose   → accept   enter run   esc dashboard"))
+	sections = append(sections, "", dimStyle.Render(truncate(
+		"tab/↑↓ choose   → accept   enter run   esc back", innerWidth)))
+	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
-		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body.String())
+		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
@@ -714,79 +849,106 @@ func (m *MenuModel) suggestionAnnotation(suggestion string) string {
 
 func (m *MenuModel) renderRecentDetail() string {
 	record := *m.recentDetail
-	boxWidth := min(max(m.width-8, 64), 86)
-	labelStyle := lipgloss.NewStyle().Foreground(colorDim).Bold(true).Width(18)
-	valueStyle := lipgloss.NewStyle().Foreground(colorText)
+	boxWidth := min(86, max(m.width-2, 20))
+	innerWidth := max(boxWidth-4, 1)
+	labelWidth := min(18, max(innerWidth/3, 10))
+	valueWidth := max(innerWidth-labelWidth, 1)
+	labelStyle := lipgloss.NewStyle().Foreground(colorDim).Bold(true).Width(labelWidth)
 	titleStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
 	statusColor := colorOK
 	if record.Outcome == localhistory.OutcomePartial {
 		statusColor = colorHigh
 	}
 	line := func(label, value string) string {
-		return labelStyle.Render(label) + valueStyle.Render(value)
+		return labelStyle.Render(label) + hangingValue(value, labelWidth, valueWidth)
 	}
 	severity := fmt.Sprintf("%d / %d / %d / %d", record.Summary.Critical, record.Summary.High, record.Summary.Medium, record.Summary.Low)
 
-	var body strings.Builder
-	body.WriteString(titleStyle.Render("RECENT SCAN SUMMARY"))
-	body.WriteString("\n")
-	body.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("Reopened from privacy-safe local history"))
-	body.WriteString("\n\n")
-	body.WriteString(line("Repository", record.Repository) + "\n")
-	body.WriteString(labelStyle.Render("Status") + lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(strings.ToUpper(string(record.Outcome))) + "\n")
-	body.WriteString(line("Completed", record.CompletedAt.UTC().Format(time.RFC3339)) + "\n")
-	body.WriteString(line("Findings", fmt.Sprintf("%d", record.Summary.Findings)) + "\n")
-	body.WriteString(line("C / H / M / L", severity) + "\n")
-	body.WriteString(line("Debt estimate", fmt.Sprintf("%.2f hours", record.Summary.TechnicalDebtHours)) + "\n")
-	body.WriteString(line("Warnings", fmt.Sprintf("%d", record.Summary.Warnings)) + "\n")
-	body.WriteString(line("Analyzer failures", fmt.Sprintf("%d", record.Summary.AnalyzerFailures)) + "\n")
-	body.WriteString("\n")
-	body.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("Only summary metadata is stored; source and finding details are never persisted."))
-	body.WriteString("\n\n")
-	body.WriteString(lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("esc / enter"))
-	body.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render(" dashboard   "))
-	body.WriteString(lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("s"))
-	body.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render(" scan current   "))
-	body.WriteString(lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("h"))
-	body.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render(" session history"))
+	content := []string{
+		titleStyle.Render(truncate("RECENT SCAN SUMMARY", innerWidth)),
+		lipgloss.NewStyle().Foreground(colorDim).Render(truncate("Reopened from privacy-safe local history", innerWidth)),
+		"",
+		line("Repository", record.Repository),
+		labelStyle.Render("Status") + lipgloss.NewStyle().Foreground(statusColor).Bold(true).
+			Render(strings.ToUpper(string(record.Outcome))),
+		line("Completed", record.CompletedAt.UTC().Format(time.RFC3339)),
+		line("Findings", fmt.Sprintf("%d", record.Summary.Findings)),
+		line("C / H / M / L", severity),
+		line("Debt estimate", fmt.Sprintf("%.2f hours", record.Summary.TechnicalDebtHours)),
+		line("Warnings", fmt.Sprintf("%d", record.Summary.Warnings)),
+		line("Analyzer failures", fmt.Sprintf("%d", record.Summary.AnalyzerFailures)),
+		"",
+	}
+	privacy := lipgloss.NewStyle().Foreground(colorDim).Width(innerWidth).
+		Render("Only summary metadata is stored; source and finding details are never persisted.")
+	content = append(content, strings.Split(privacy, "\n")...)
+	content = flattenRenderedLines(content)
+	viewportHeight := m.overlayViewportHeight()
+	maxOffset := max(len(content)-viewportHeight, 0)
+	m.recentOffset = clamp(m.recentOffset, 0, maxOffset)
+	visible := windowLinesAt(content, viewportHeight, m.recentOffset)
+	footer := lipgloss.NewStyle().Foreground(colorDim).Render(truncate(
+		"j/k scroll   s scan   h history   esc/enter dashboard", innerWidth))
+	body := lipgloss.JoinVertical(lipgloss.Left, strings.Join(visible, "\n"), footer)
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
-		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body.String())
+		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
 func (m *MenuModel) renderHelp() string {
-	boxWidth := min(max(m.width-8, 68), 100)
-	headerStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
-	keyStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Width(18)
-	descStyle := lipgloss.NewStyle().Foreground(colorText)
-	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
-	var rows strings.Builder
-	rows.WriteString(headerStyle.Render("DASHBOARD SHORTCUTS"))
-	rows.WriteString("\n\n")
-	for _, action := range dashboardActions {
-		rows.WriteString(keyStyle.Render(action.shortcut))
-		rows.WriteString(descStyle.Render(action.label))
-		rows.WriteString("\n")
-	}
-	rows.WriteString(keyStyle.Render("r"))
-	rows.WriteString(descStyle.Render("Reopen the newest local scan summary"))
-	rows.WriteString("\n")
-	rows.WriteString(keyStyle.Render("↑/↓ or j/k"))
-	rows.WriteString(descStyle.Render("Move focus; Enter opens the selected row"))
-	rows.WriteString("\n")
-	rows.WriteString(keyStyle.Render("/"))
-	rows.WriteString(descStyle.Render("Open the command palette"))
-	rows.WriteString("\n\n")
-	rows.WriteString(headerStyle.Render("COMMAND PALETTE"))
-	rows.WriteString("\n\n")
-	for _, command := range allCommands {
-		rows.WriteString(keyStyle.Render(command.cmd))
-		rows.WriteString(descStyle.Render(command.desc))
-		rows.WriteString("\n")
-	}
-	rows.WriteString("\n")
-	rows.WriteString(dimStyle.Render("q / esc  back to dashboard"))
+	boxWidth := min(100, max(m.width-2, 20))
+	innerWidth := max(boxWidth-4, 1)
+	helpLines := m.helpLines(innerWidth)
+	viewportHeight := m.overlayViewportHeight()
+	maxOffset := max(len(helpLines)-viewportHeight, 0)
+	m.helpOffset = clamp(m.helpOffset, 0, maxOffset)
+	visible := windowLinesAt(helpLines, viewportHeight, m.helpOffset)
+	footerText := fmt.Sprintf("%d-%d/%d   j/k scroll   g/G ends   q/esc back",
+		min(m.helpOffset+1, len(helpLines)), min(m.helpOffset+len(visible), len(helpLines)), len(helpLines))
+	footer := lipgloss.NewStyle().Foreground(colorDim).Render(truncate(footerText, innerWidth))
+	body := lipgloss.JoinVertical(lipgloss.Left, strings.Join(visible, "\n"), footer)
+
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
-		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(rows.String())
+		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m *MenuModel) helpLines(innerWidth int) []string {
+	headerStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
+	keyWidth := min(18, max(innerWidth/3, 8))
+	descriptionWidth := max(innerWidth-keyWidth, 1)
+	keyStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Width(keyWidth)
+	descStyle := lipgloss.NewStyle().Foreground(colorText)
+	row := func(key, description string) string {
+		return keyStyle.Render(truncate(key, keyWidth)) + descStyle.Render(truncate(description, descriptionWidth))
+	}
+	rows := []string{headerStyle.Render(truncate("DASHBOARD SHORTCUTS", innerWidth)), ""}
+	for _, action := range dashboardActions {
+		rows = append(rows, row(action.shortcut, action.label))
+	}
+	rows = append(rows,
+		row("r", "Reopen the newest local scan summary"),
+		row("↑/↓ or j/k", "Move focus; Enter opens the selected row"),
+		row("/", "Open the command palette"),
+		"",
+		headerStyle.Render(truncate("COMMAND PALETTE", innerWidth)),
+		"",
+	)
+	for _, command := range allCommands {
+		rows = append(rows, row(command.cmd, command.desc))
+	}
+	return rows
+}
+
+func (m *MenuModel) overlayViewportHeight() int {
+	const chromeAndFooter = 5 // border, vertical padding, and pinned footer
+	return max(m.height-chromeAndFooter, 1)
+}
+
+func flattenRenderedLines(groups []string) []string {
+	var lines []string
+	for _, group := range groups {
+		lines = append(lines, strings.Split(group, "\n")...)
+	}
+	return lines
 }

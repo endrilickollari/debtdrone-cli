@@ -107,20 +107,32 @@ func (l issueList) view() string {
 	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
 
 	const sevW = 10
-	const fileW = 38
 	const catW = 16
 	const gap = 2
+	// Every row opens with a focus marker so the selected finding is identifiable
+	// from text alone, without relying on the highlight colour.
+	const markerW = 2
+
+	// The file column gives back width on narrow terminals so the message stays
+	// readable rather than being cut to a few characters.
+	fileW := 38
+	if layoutFor(l.width, 0).compact() {
+		fileW = 24
+	}
 
 	// The category column is only worth its width once the message column can
 	// still show a useful amount of text alongside it.
-	showCategory := l.width >= sevW+fileW+catW+40
-	fixedW := sevW + fileW + (gap * 4) + 2
+	showCategory := l.width >= markerW+sevW+fileW+catW+40
+	fixedW := markerW + sevW + fileW + (gap * 3)
 	if showCategory {
 		fixedW += catW + gap
 	}
 	msgW := max(l.width-fixedW, 8)
 
-	header := fmt.Sprintf("  %s  %s", headerStyle.Width(sevW).Render("Severity"), headerStyle.Width(fileW).Render("File"))
+	header := fmt.Sprintf("%s%s  %s",
+		strings.Repeat(" ", markerW),
+		headerStyle.Width(sevW).Render("Severity"),
+		headerStyle.Width(fileW).Render("File"))
 	if showCategory {
 		header += "  " + headerStyle.Width(catW).Render("Category")
 	}
@@ -137,46 +149,49 @@ func (l issueList) view() string {
 			sev = "low"
 		}
 
-		sevStr := lipgloss.NewStyle().
-			Foreground(severityColor(sev)).
-			Bold(true).
-			Width(sevW).
-			Render(sev)
+		selected := i == l.cursor
+
+		// Each cell carries the selection background itself. A style that only
+		// wrapped the finished row would be cancelled by the reset sequence
+		// every inner style emits, leaving the highlight painted on the
+		// padding alone.
+		cell := func(colour lipgloss.Color) lipgloss.Style {
+			style := lipgloss.NewStyle().Foreground(colour)
+			if selected {
+				style = style.Background(colorSelectedBg)
+			}
+			return style
+		}
+
+		marker := "  "
+		if selected {
+			marker = "› "
+		}
+
+		sevStr := cell(severityColor(sev)).Bold(true).Width(sevW).Render(sev)
 
 		base := filepath.Base(issue.FilePath)
 		if issue.LineNumber != nil {
 			base = fmt.Sprintf("%s:%d", base, *issue.LineNumber)
 		}
-		fileStr := lipgloss.NewStyle().
-			Foreground(colorFilePath).
-			Width(fileW).
-			Render(truncate(base, fileW-1))
+		fileStr := cell(colorFilePath).Width(fileW).Render(truncate(base, fileW-1))
+		msgStr := cell(colorText).Render(truncate(issue.Message, msgW))
 
-		msgStr := lipgloss.NewStyle().
-			Foreground(colorText).
-			Render(truncate(issue.Message, msgW))
-
-		row := fmt.Sprintf("  %s  %s", sevStr, fileStr)
+		row := cell(colorAccentBlue).Bold(true).Render(marker) + sevStr + cell(colorText).Render("  ") + fileStr
 		if showCategory {
 			category := issue.Category
 			if category == "" {
 				category = "—"
 			}
-			row += "  " + lipgloss.NewStyle().
-				Foreground(colorDim).
-				Width(catW).
-				Render(truncate(category, catW-1))
+			row += cell(colorText).Render("  ") + cell(colorDim).Width(catW).Render(truncate(category, catW-1))
 		}
-		row += "  " + msgStr
+		row += cell(colorText).Render("  ") + msgStr
 
-		if i == l.cursor {
-			row = lipgloss.NewStyle().
-				Background(colorSelectedBg).
-				Width(l.width).
-				Render(row)
-		} else {
-			row = lipgloss.NewStyle().Width(l.width).Render(row)
+		rowStyle := lipgloss.NewStyle().Width(l.width)
+		if selected {
+			rowStyle = rowStyle.Background(colorSelectedBg)
 		}
+		row = rowStyle.Render(row)
 		lines = append(lines, row)
 	}
 

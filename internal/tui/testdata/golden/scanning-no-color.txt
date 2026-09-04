@@ -13,7 +13,7 @@
 
                    ╭────────────────────────────────────────────────────────────────────────────────╮
                    │                                                                                │
-                   │    ⠋ Analyzing Repository…                                                     │
+                   │    * Analyzing Repository…                                                     │
                    │                                                                                │
                    │    Stage    ComplexityAnalyzer                                                 │
                    │    Path     /Users/dev/projects/api-gateway                                    │

@@ -6,6 +6,6 @@
 [1;38;2;255;170;85mNo findings match the current filters[0m
 [38;2;200;208;232msearch "no-such-finding"  ·  0 of 4 findings[0m
 
-[38;2;73;80;104mx  clear all filters        /  edit the search        c  cycle category[0m
+[38;2;73;80;104mx clear all filters   / edit search   c cycle category[0m
 [38;2;73;80;104m[0m
 [38;2;73;80;104mr rescan   q quit[0m

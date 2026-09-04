@@ -139,9 +139,9 @@ func (m *HistoryModel) render() string {
 		Width(m.width - 2).
 		Render(m.detail.view())
 
-	hints := lipgloss.NewStyle().Foreground(colorDim).Render(
-		"j/k ↑↓ navigate   J/K scroll detail   g/G top/bottom   enter browse results   q quit",
-	)
+	hints := renderHints(m.width, []string{
+		"j/k navigate", "J/K scroll detail", "g/G top/bottom", "enter browse results", "q quit",
+	})
 
 	return lipgloss.JoinVertical(lipgloss.Left, listPane, divider, detailPane, hints)
 }
@@ -152,16 +152,30 @@ func (m *HistoryModel) renderList() string {
 
 	const dateW = 19
 	const totalW = 9
-	const breakW = 28
+	// Four "C:nnn" groups separated by two spaces.
+	const breakW = 26
 	const gap = 2
-	pathW := max(m.width-dateW-totalW-breakW-(gap*4)-2, 12)
+	const markerW = 2
 
-	header := fmt.Sprintf("  %s  %s  %s  %s",
+	// Columns are budgeted against the terminal rather than assumed: content
+	// wider than the row is wrapped by lipgloss, which pushes every following
+	// line out of place.
+	showBreakdown := m.width >= markerW+dateW+gap+16+gap+totalW+gap+breakW
+	fixedW := markerW + dateW + gap + gap + totalW
+	if showBreakdown {
+		fixedW += gap + breakW
+	}
+	pathW := max(m.width-fixedW, 10)
+
+	header := fmt.Sprintf("%s%s  %s  %s",
+		strings.Repeat(" ", markerW),
 		headerStyle.Width(dateW).Render("Date / Time"),
-		headerStyle.Width(pathW).Render("Scanned Path"),
+		headerStyle.Width(pathW).Render(truncate("Scanned Path", pathW)),
 		headerStyle.Width(totalW).Render("Issues"),
-		headerStyle.Render("Breakdown"),
 	)
+	if showBreakdown {
+		header += "  " + headerStyle.Render("Breakdown")
+	}
 	sep := dimStyle.Render(strings.Repeat("─", m.width))
 	lines := []string{header, sep}
 
@@ -179,12 +193,18 @@ func (m *HistoryModel) renderList() string {
 		totalStr := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Width(totalW).
 			Render(fmt.Sprintf("%d", run.TotalIssuesFound))
 
-		breakdownStr := lipgloss.NewStyle().Foreground(colorCritical).Render(fmt.Sprintf("C:%-3d", run.CriticalIssuesCount)) +
-			"  " + lipgloss.NewStyle().Foreground(colorHigh).Render(fmt.Sprintf("H:%-3d", run.HighIssuesCount)) +
-			"  " + lipgloss.NewStyle().Foreground(colorMedium).Render(fmt.Sprintf("M:%-3d", run.MediumIssuesCount)) +
-			"  " + lipgloss.NewStyle().Foreground(colorLow).Render(fmt.Sprintf("L:%-3d", run.LowIssuesCount))
-
-		row := fmt.Sprintf("  %s  %s  %s  %s", dateStr, pathStr, totalStr, breakdownStr)
+		marker := "  "
+		if i == m.cursor {
+			marker = "› "
+		}
+		row := fmt.Sprintf("%s%s  %s  %s", marker, dateStr, pathStr, totalStr)
+		if showBreakdown {
+			row += "  " +
+				lipgloss.NewStyle().Foreground(colorCritical).Render(fmt.Sprintf("C:%-3d", run.CriticalIssuesCount)) +
+				"  " + lipgloss.NewStyle().Foreground(colorHigh).Render(fmt.Sprintf("H:%-3d", run.HighIssuesCount)) +
+				"  " + lipgloss.NewStyle().Foreground(colorMedium).Render(fmt.Sprintf("M:%-3d", run.MediumIssuesCount)) +
+				"  " + lipgloss.NewStyle().Foreground(colorLow).Render(fmt.Sprintf("L:%-3d", run.LowIssuesCount))
+		}
 		if i == m.cursor {
 			row = lipgloss.NewStyle().Background(colorSelectedBg).Foreground(colorAccentBlue).Width(m.width).Render(row)
 		} else {
