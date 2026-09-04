@@ -123,3 +123,50 @@ func TestScanServiceReportsHistoryFailureAsWarning(t *testing.T) {
 	assert.Equal(t, "local_history", result.Warnings[0].AnalyzerID)
 	assert.Contains(t, result.Warnings[0].Message, "disk full")
 }
+
+func TestScanProgressReportsCompletedAnalyzersNotJustStarts(t *testing.T) {
+	service := &ScanService{scan: func(_ context.Context, _ string, options scanner.Options) (scanner.Report, error) {
+		options.OnProgress(scanner.ProgressEvent{
+			AnalyzerName: "Complexity", Index: 0, Completed: 0, Total: 2, Phase: scanner.ProgressStarted,
+		})
+		options.OnProgress(scanner.ProgressEvent{
+			AnalyzerName: "Complexity", Index: 0, Completed: 1, Total: 2, Phase: scanner.ProgressFinished,
+		})
+		options.OnProgress(scanner.ProgressEvent{
+			AnalyzerName: "Security", Index: 1, Completed: 1, Total: 2, Phase: scanner.ProgressStarted,
+		})
+		options.OnProgress(scanner.ProgressEvent{
+			AnalyzerName: "Security", Index: 1, Completed: 2, Total: 2, Phase: scanner.ProgressFailed,
+		})
+		return scanner.Report{}, nil
+	}}
+
+	var events []ScanProgress
+	_, err := service.RunDetailed(context.Background(), "/repo", ScanOptions{}, func(p ScanProgress) {
+		events = append(events, p)
+	})
+	require.NoError(t, err)
+
+	// Finished and failed events must reach the consumer: without them a
+	// caller can only ever observe analyzers starting and can never report
+	// that the final analyzer completed.
+	require.Len(t, events, 4)
+	assert.Equal(t, []int{0, 1, 1, 2}, []int{
+		events[0].Completed, events[1].Completed, events[2].Completed, events[3].Completed,
+	})
+	assert.Equal(t, []bool{true, false, true, false}, []bool{
+		events[0].Started, events[1].Started, events[2].Started, events[3].Started,
+	})
+	assert.Equal(t, 2, events[3].Total)
+}
+
+func TestScanServiceToleratesAbsentProgressCallback(t *testing.T) {
+	service := &ScanService{scan: func(_ context.Context, _ string, options scanner.Options) (scanner.Report, error) {
+		options.OnProgress(scanner.ProgressEvent{AnalyzerName: "Complexity", Total: 1, Phase: scanner.ProgressStarted})
+		return scanner.Report{}, nil
+	}}
+
+	assert.NotPanics(t, func() {
+		_, _ = service.RunDetailed(context.Background(), "/repo", ScanOptions{}, nil)
+	})
+}

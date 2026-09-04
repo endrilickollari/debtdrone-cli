@@ -2,7 +2,8 @@ package tui
 
 import (
 	"fmt"
-	"os"
+	"io"
+	"log"
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
@@ -76,8 +77,20 @@ func NewConfiguredAppModel(values localconfig.Values) *AppModel {
 }
 
 func RunTUI(values localconfig.Values) error {
+	// The standard logger is silenced for as long as the TUI owns the terminal.
+	// Anything written to stderr while the alt-screen is active would be painted
+	// over the interface, so the writer is restored only after Run returns.
+	previousLogOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(previousLogOutput)
+
 	_, err := tea.NewProgram(NewConfiguredAppModel(values)).Run()
-	return err
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("👋 Goodbye!")
+	return nil
 }
 
 func (m *AppModel) Init() tea.Cmd {
@@ -103,8 +116,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
-			fmt.Println("👋 Goodbye!")
-			os.Exit(0)
+			// Stop any in-flight scan and quit through Bubble Tea so the
+			// terminal is restored instead of being abandoned in alt-screen.
+			m.scan.Cancel()
+			return m, tea.Quit
 		}
 
 	case NavigateMsg:

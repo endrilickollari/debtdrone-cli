@@ -44,8 +44,9 @@ DebtDrone uses familiar Vim-style keybindings throughout every view.
 | `Ctrl+C` | Exit the application from any view |
 
 Individual views add keys such as `g`/`G`, page navigation, results filtering,
-and configuration editing. During an active scan, navigation keys are ignored;
-`Ctrl+C` exits the application rather than returning to the dashboard.
+and configuration editing. During an active scan, navigation keys are ignored
+and only cancellation is accepted: `Esc` stops the scan and returns to the
+dashboard, `Ctrl+C` stops it and exits.
 
 ---
 
@@ -106,10 +107,25 @@ the view through two phases:
 
 ### Phase 1 — Scanning
 
-A focused progress panel appears at the center of the screen. It shows the name of the currently-running analyzer, the path being processed, and a live progress bar so you always know how far along the scan is. `Ctrl+C` exits DebtDrone immediately; the current TUI does not return to the dashboard after cancelling a scan.
+The scan runs outside the interface's update loop, so the panel keeps redrawing
+and stays responsive for the whole run.
 
-![Scan in progress panel showing ComplexityAnalyzer running at 33%](../../assets/scan_in_progress.png)
-*The scan progress panel mid-run. The active task (`ComplexityAnalyzer`) and the scanned path update in real time.*
+A focused progress panel appears at the center of the screen showing the stage
+(the analyzer currently running), the path being processed, and the elapsed
+time. Once the scanner reports how many analyzers the run contains, a bar tracks
+how many have **finished** — it counts completed analyzers rather than
+estimating a percentage, so it never claims progress the scan has not made.
+Before that total is known, the panel shows the stage and elapsed time alone.
+
+| Key | Action |
+|---|---|
+| `Esc` / `q` | Cancel the scan and return to the dashboard |
+| `Ctrl+C` | Cancel the scan and exit DebtDrone |
+
+Cancelling stops the scanner itself rather than only hiding its output, and a
+cancelled scan can never deliver results afterwards. Starting another scan while
+one is running cancels the first — the newer scan owns the view, and the
+superseded run cannot overwrite it.
 
 :::tip[What gets scanned?]
 DebtDrone analyzes 14 languages: Go, JavaScript, TypeScript (including JSX/TSX), Python, Java, C#, PHP, Ruby, Rust, Kotlin, Swift, C, and C++. Files in `node_modules`, `vendor`, `dist`, and `.git` are excluded by default.
@@ -163,6 +179,16 @@ its position rather than jumping back to the top.
 If filters exclude everything, the workspace says which filters are active and
 how to clear them instead of showing an empty table. A scan that finds nothing
 reports a clean result along with the repository it covered.
+
+#### When a scan fails
+
+A scan that cannot complete reports the repository it targeted, how long it ran
+before failing, and the scanner's own error text, so the failure can be acted on
+without rerunning it blind. Press `r` to retry the same repository with your
+current configuration, or `Esc` to return to the dashboard.
+
+A scan that partially succeeds still shows its findings, with a **Partial scan**
+banner naming the analyzers that failed above the results.
 
 :::note[Raw JSON output]
 When **Output Format** is set to `json`, the results view shows the raw report as
