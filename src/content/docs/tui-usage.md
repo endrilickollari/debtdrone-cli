@@ -71,6 +71,9 @@ finding count, and critical/high/medium/low breakdown. Press `Enter` on any
 recent row to reopen its summary. Source code and full finding details are not
 persisted, so those remain available only from session history.
 
+![DebtDrone dashboard with primary actions and recent scans](../../assets/screens/dashboard.svg)
+*The dashboard. Primary actions sit beside the newest local scan summaries, each row showing its outcome and severity breakdown.*
+
 The empty state points first-time users to **Scan current directory**. If local
 history cannot be read, the dashboard shows the error while leaving all primary
 actions available.
@@ -117,6 +120,9 @@ how many have **finished** — it counts completed analyzers rather than
 estimating a percentage, so it never claims progress the scan has not made.
 Before that total is known, the panel shows the stage and elapsed time alone.
 
+![DebtDrone scanning a repository, showing stage, elapsed time and analyzers completed](../../assets/screens/scan-in-progress.svg)
+*The scan progress panel mid-run. The stage, elapsed time, and completed-analyzer count update as the scan advances.*
+
 | Key | Action |
 |---|---|
 | `Esc` / `q` | Cancel the scan and return to the dashboard |
@@ -147,8 +153,8 @@ Once scanning completes, the view expands into a results workspace.
   type, analyzer, confidence, debt hours, and message. Additional details,
   evidence, and surrounding context appear when the analyzer provides them.
 
-![Scan results master-detail view showing findings list and per-function metrics](../../assets/scan_result.png)
-*The results view. The top pane lists findings by severity; the bottom pane shows the analyzer metadata and threshold-aware message for the selected finding.*
+![DebtDrone results workspace with summary band, findings table and detail pane](../../assets/screens/scan-results.svg)
+*The results view. The summary band reports the whole scan, the table lists findings by severity, and the detail pane shows the analyzer metadata for the selected finding.*
 
 #### Filtering, searching, and sorting
 
@@ -170,6 +176,9 @@ survive them.
 | `g` / `G` | Jump to the first or last finding |
 | `pgup` / `pgdn` | Page through the table |
 
+![DebtDrone results filtered to high severity findings matching a search](../../assets/screens/scan-results-filtered.svg)
+*Filtered results. The status line names every active filter and how many findings survive them.*
+
 The selected sort mode is the primary order; severity, file, and line provide
 stable tie-breaking. Switch back to severity sort to restore the
 critical-to-low order. When a filter change keeps the selected finding, the
@@ -186,6 +195,9 @@ A scan that cannot complete reports the repository it targeted, how long it ran
 before failing, and the scanner's own error text, so the failure can be acted on
 without rerunning it blind. Press `r` to retry the same repository with your
 current configuration, or `Esc` to return to the dashboard.
+
+![DebtDrone reporting a failed scan with repository, elapsed time and retry options](../../assets/screens/scan-failure.svg)
+*A failed scan. The repository, the time it ran, and the scanner's own error are all preserved for the retry.*
 
 A scan that partially succeeds still shows its findings, with a **Partial scan**
 banner naming the analyzers that failed above the results.
@@ -214,8 +226,8 @@ first. The header bar shows each entry's timestamp, scanned path, total issue
 count, and a severity breakdown (`C` / `H` / `M` / `L`). Selecting an entry
 opens a **Past Scan Summary** panel before you drill further.
 
-![History browser showing a past scan with 98 issues broken down by severity](../../assets/history.png)
-*The history browser. The selected entry shows 98 total issues: 35 critical, 57 high, 3 medium, 3 low. Press `Enter` to open the full results view for that run.*
+![DebtDrone session history browser showing a past scan summary](../../assets/screens/history.svg)
+*The history browser. The selected entry shows its totals and severity breakdown. Press `Enter` to open the full results view for that run.*
 
 Select any entry with `Enter` to open it in the same master-detail layout used
 by the live scan view.
@@ -239,7 +251,7 @@ The config view presents resolved settings as a navigable form, organised into
 with the same file and environment precedence used by headless and MCP scans.
 Edits become session overrides for scans started in the current TUI.
 
-![Interactive DebtDrone settings editor](../../assets/config.png)
+![DebtDrone interactive settings editor](../../assets/screens/config.svg)
 *The Settings editor. Navigate with `j`/`k`, cycle enum values with `←`/`→`, and toggle booleans with `Enter` or `Space`.*
 
 | Section | Setting | Description |

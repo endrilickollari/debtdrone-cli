@@ -1,0 +1,29 @@
+
+
+
+
+
+
+
+
+
+
+
+                                        DEBTDRONE  LOCAL SCANNER  /  api-gateway
+                     Choose an action. Shortcuts accelerate the workflow; they are never required.
+
+    ╭──────────────────────────────────────────╮   ╭───────────────────────────────────────────────────────────────╮
+    │                                          │   │                                                               │
+    │ PRIMARY ACTIONS                          │   │ RECENT SCANS                              [r] reopen newest   │
+    │                                          │   │                                                               │
+    │ › Scan current directory           [s]   │   │  api-gateway                                      COMPLETED   │
+    │   Analyze this repository now            │   │  Sep 04 09:27 UTC · 42 findings                               │
+    │   Choose repository path           [p]   │   │  C:3  H:11  M:19  L:9                                         │
+    │   Session scan history             [h]   │   │  billing-worker                                     PARTIAL   │
+    │   Settings                         [c]   │   │  Sep 04 07:31 UTC · 8 findings                                │
+    │   Keyboard help                    [?]   │   │  C:0  H:2  M:4  L:2                                           │
+    │   Quit DebtDrone                   [q]   │   │                                                               │
+    │                                          │   ╰───────────────────────────────────────────────────────────────╯
+    ╰──────────────────────────────────────────╯
+
+                                  ↑/↓ move   enter open   / commands   ? help   q quit

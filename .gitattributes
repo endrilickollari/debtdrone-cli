@@ -1,0 +1,2 @@
+internal/tui/testdata/golden/*.txt text eol=lf
+src/assets/screens/*.svg text eol=lf

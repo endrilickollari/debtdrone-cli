@@ -1,0 +1,27 @@
+4 findings  across 4 files  ·  8.0h estimated debt
+Critical 1   High 1   Medium 1   Low 1
+Repository  /Users/dev/projects/api-gateway
+  Severity    File                                    Category          Message
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  critical    main.go:42                              security          hardcoded credential detected
+  high        handler.go:118                          complexity        cyclomatic complexity 24 exceeds threshold …
+  medium      middleware.go:63                        complexity        nesting depth 6 exceeds threshold 4
+  low         postgres.go:7                           coverage          file has low test coverage
+  1 / 4
+────────────────────────────────────────────────── Issue Details ───────────────────────────────────────────────────
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│Full Path     cmd/gateway/main.go                                                                                     │
+│Line          42:9                                                                                                    │
+│Severity      CRITICAL                                                                                                │
+│Category      security                                                                                                │
+│Issue Type    hardcoded-secret                                                                                        │
+│Rule ID       SEC-0142                                                                                                │
+│Tool          trivy                                                                                                   │
+│Debt Hours    4.0h                                                                                                    │
+│Effort        1.5×                                                                                                    │
+│Confidence    95%                                                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+j/k move   J/K detail   / search   1-4 severity   c category
+s sort: severity   x clear   e export   r rescan   q quit

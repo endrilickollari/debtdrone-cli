@@ -1,0 +1,11 @@
+[1;38;2;79;195;247m4 findings[0m[38;2;73;80;104m  across 4 files  ·  8.0h estimated debt[0m
+[1;38;2;255;95;95mCritical 1[0m[38;2;73;80;104m   [0m[1;38;2;255;170;85mHigh 1[0m[38;2;73;80;104m   [0m[1;38;2;255;208;128mMedium 1[0m[38;2;73;80;104m   [0m[1;38;2;89;96;128mLow 1[0m
+[38;2;73;80;104mRepository  [0m[38;2;136;153;187m/Users/dev/projects/api-gateway[0m
+[38;2;79;195;247mFiltered  [0m[38;2;200;208;232msearch "no-such-finding"  ·  0 of 4 findings[0m[38;2;73;80;104m   x to clear[0m
+
+[1;38;2;255;170;85mNo findings match the current filters[0m
+[38;2;200;208;232msearch "no-such-finding"  ·  0 of 4 findings[0m
+
+[38;2;73;80;104mx  clear all filters        /  edit the search        c  cycle category[0m
+[38;2;73;80;104m[0m
+[38;2;73;80;104mr rescan   q quit[0m

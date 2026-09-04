@@ -1,0 +1,25 @@
+
+[1;38;2;73;80;104mFull Path[0m     [38;2;200;208;232mcmd/gateway/main.go[0m
+[1;38;2;73;80;104mLine[0m          [38;2;200;208;232m42:9[0m
+[1;38;2;73;80;104mSeverity[0m      [1;38;2;255;95;95mCRITICAL[0m
+[1;38;2;73;80;104mCategory[0m      [38;2;200;208;232msecurity[0m
+[1;38;2;73;80;104mIssue Type[0m    [38;2;200;208;232mhardcoded-secret[0m
+[1;38;2;73;80;104mRule ID[0m       [38;2;200;208;232mSEC-0142[0m
+[1;38;2;73;80;104mTool[0m          [38;2;200;208;232mtrivy[0m
+[1;38;2;73;80;104mDebt Hours[0m    [38;2;200;208;232m4.0h[0m
+[1;38;2;73;80;104mEffort[0m        [38;2;200;208;232m1.5×[0m
+[1;38;2;73;80;104mConfidence[0m    [38;2;200;208;232m95%[0m
+
+[1;38;2;79;195;247mMessage[0m
+[38;2;200;208;232mhardcoded credential detected[0m
+
+[1;38;2;79;195;247mDetails[0m
+[38;2;200;208;232mExtract the credential into an environment variable and rotate the exposed value.[0m
+
+[1;38;2;79;195;247mEvidence[0m
+[38;2;136;153;187mconst apiKey = "sk-live-2f9c..."[0m
+
+[1;38;2;79;195;247mSurrounding Context[0m
+[38;2;136;153;187m12 | func newClient() *Client {[0m
+[38;2;136;153;187m13 |   const apiKey = "sk-live-2f9c..."[0m
+[38;2;136;153;187m14 |   return &Client{key: apiKey}[0m

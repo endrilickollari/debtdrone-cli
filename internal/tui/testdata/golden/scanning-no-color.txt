@@ -1,0 +1,26 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   ╭────────────────────────────────────────────────────────────────────────────────╮
+                   │                                                                                │
+                   │    ⠋ Analyzing Repository…                                                     │
+                   │                                                                                │
+                   │    Stage    ComplexityAnalyzer                                                 │
+                   │    Path     /Users/dev/projects/api-gateway                                    │
+                   │    Elapsed  7s                                                                 │
+                   │                                                                                │
+                   │    ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  2/5 analyzers                     │
+                   │                                                                                │
+                   ╰────────────────────────────────────────────────────────────────────────────────╯
+
+                              esc  cancel and return to the dashboard        ctrl+c  quit

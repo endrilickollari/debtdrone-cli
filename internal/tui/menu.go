@@ -513,7 +513,10 @@ func (m *MenuModel) render() string {
 }
 
 func (m *MenuModel) renderDashboard() string {
-	contentWidth := min(max(m.width-8, 68), 118)
+	contentWidth := min(max(m.width-8, 1), 118)
+	if m.width < 90 {
+		contentWidth = max(m.width, 1)
+	}
 	titleStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
 	repository := filepath.Base(m.currentPath)
@@ -521,19 +524,26 @@ func (m *MenuModel) renderDashboard() string {
 		repository = m.currentPath
 	}
 	header := titleStyle.Render("DEBTDRONE") + "  " + dimStyle.Render("LOCAL SCANNER  /  "+repository)
-	subtitle := lipgloss.NewStyle().Foreground(colorText).
-		Render("Choose an action. Shortcuts accelerate the workflow; they are never required.")
+	subtitleText := "Choose an action. Shortcuts accelerate the workflow; they are never required."
+	if lipgloss.Width(subtitleText) > contentWidth {
+		subtitleText = "Choose an action. Every workflow is available without shortcuts."
+	}
+	subtitle := lipgloss.NewStyle().Foreground(colorText).Render(subtitleText)
 
 	actionWidth := 42
+	gapWidth := 3
 	if contentWidth < 90 {
 		actionWidth = 32
+		gapWidth = 1
 	}
-	recentWidth := contentWidth - actionWidth - 3
+	// Width excludes each panel's border, so reserve two cells per panel in
+	// addition to the visible gap between them.
+	recentWidth := contentWidth - actionWidth - gapWidth - 4
 	actions := m.renderActions(actionWidth)
 	recent := m.renderRecentScans(max(recentWidth, 33))
 	var body string
 	if recentWidth >= 33 {
-		body = lipgloss.JoinHorizontal(lipgloss.Top, actions, "   ", recent)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, actions, strings.Repeat(" ", gapWidth), recent)
 	} else {
 		body = lipgloss.JoinVertical(lipgloss.Left, actions, "", m.renderRecentScans(contentWidth))
 	}
