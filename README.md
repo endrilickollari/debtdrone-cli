@@ -14,7 +14,7 @@
 Built with a **Hexagonal Architecture**, DebtDrone ships as a single, statically-linked Go binary that serves three distinct purposes:
 1. **Interactive TUI:** A beautiful, responsive terminal interface for developers to explore code complexity locally.
 2. **Headless CLI:** A robust, pipeline-ready executable for CI/CD environments with strict quality gates and JSON outputs.
-3. **Coding-agent MCP:** A local stdio server on `main` that scans within an explicit repository root without modifying its contents.
+3. **Coding-agent MCP:** A local stdio server that scans within an explicit repository root without modifying its contents.
 
 ---
 
@@ -44,9 +44,10 @@ Built on [Cobra](https://github.com/spf13/cobra).
 
 [Configure DebtDrone for a coding agent →](https://cli.debtdrone.net/mcp-and-agents/)
 
-> **Release status:** MCP is available on `main` but is not part of the
-> latest tagged release, `v2.1.0`. The agent guide includes a temporary
-> source installation until the next approved release.
+> **Release availability:** MCP is included in `v2.2.0` and later. If the latest
+> tagged release is older, temporarily install the current source with
+> `go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@main`.
+> Once `v2.2.0` is available, upgrade through your normal installation method.
 
 ---
 

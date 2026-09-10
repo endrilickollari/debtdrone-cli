@@ -44,9 +44,8 @@ matching severity should return a non-zero status in CI.
 
 Connect Codex or Claude Code to the local, repository-scoped MCP server. The
 `scan_repository` tool uses the same scanner as the CLI, stays within the root
-you configure, and does not modify repository contents. MCP is currently
-available on `main` and will enter tagged distribution with the next approved
-release.
+you configure, and does not modify repository contents. MCP is included in
+`v2.2.0` and later.
 
 [Connect a coding agent →](./mcp-and-agents/)
 

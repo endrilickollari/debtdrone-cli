@@ -15,19 +15,17 @@ repository contents.
 ## Before you connect an agent
 
 :::note[MCP release availability]
-The `mcp` command is available on `main` but is not included in the latest
-tagged release, `v2.1.0`. Until the next approved release is published, install
-the current source version:
+The `mcp` command is included in `v2.2.0` and later. If the latest tagged
+release is still older than `v2.2.0`, install the current source temporarily:
 
-```bash title="Terminal · Install MCP support from main"
+```bash title="Terminal · Install MCP support before v2.2.0"
 go install github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@main
 ```
 
-The same `go install` command works in PowerShell.
-
-This requires the Go and C compiler prerequisites described in
-[Install the CLI](../installation/). Return to the normal tagged installation
-methods after a release containing `debtdrone mcp` is available.
+The same command works in PowerShell and requires the Go and C compiler
+prerequisites described in [Install the CLI](../installation/). Once `v2.2.0`
+is available, return to a normal tagged installation. Restart your agent after
+changing the executable so it discovers the updated command.
 :::
 
 Confirm that the installed binary exposes the MCP command and is discoverable

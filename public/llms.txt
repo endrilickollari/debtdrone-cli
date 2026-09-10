@@ -2,7 +2,7 @@
 
 > DebtDrone is an open-source technical-debt scanner with an interactive TUI, a headless CLI for automation, a local MCP server, and a reusable Go scanner API.
 
-Coding agents can start `debtdrone mcp --root <absolute-path>` as a local, read-only stdio server. Its `scan_repository` tool cannot access paths outside the configured root. MCP is currently available on `main` and is not included in the latest tagged release, `v2.1.0`.
+Coding agents can start `debtdrone mcp --root <absolute-path>` as a local, read-only stdio server. Its `scan_repository` tool cannot access paths outside the configured root. MCP is included in v2.2.0 and later; while the latest tagged release is older, users can temporarily install `github.com/endrilickollari/debtdrone-cli/v2/cmd/debtdrone@main` from source.
 
 ## Start here
 

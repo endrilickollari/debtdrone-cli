@@ -67,9 +67,9 @@ results were printed.
 ## `debtdrone mcp`
 
 :::note[Release availability]
-This command is available on `main` but is not included in `v2.1.0`. Follow
-[MCP and coding agents](../mcp-and-agents/#before-you-connect-an-agent) for the
-temporary source installation.
+This command is included in `v2.2.0` and later. If the latest tagged release is
+still older, follow the temporary source-installation instructions in
+[MCP and coding agents](../mcp-and-agents/#before-you-connect-an-agent).
 :::
 
 ```text
