@@ -79,15 +79,25 @@ debtdrone scan . --format=json --security-scan=false
 
 ## Configuration changes have no effect on scans
 
-This is expected in the current release. `debtdrone init` generates a preview
-repository file, but scans do not load it. The user-level `debtdrone config set`
-command persists values safely, but scan, MCP, and TUI entry points do not apply
-them until the remaining integration lands.
-
-Pass scan settings as flags instead:
+First inspect the effective value and its winning source:
 
 ```bash
-debtdrone scan . --max-complexity=12 --fail-on=high
+debtdrone config get scan.max_complexity
+debtdrone config list
+```
+
+Headless, MCP, and TUI scans all apply the versioned user configuration.
+`DEBTDRONE_*` environment variables override the file, and explicit scan flags
+or MCP tool inputs override both. Remove an unintended environment override or
+use `debtdrone config unset <key>` when the file should fall back to its default.
+
+The repository-level `.debtdrone.yaml` file created by `debtdrone init` is a
+separate preview format and is not loaded by current scans. Persist supported
+settings with `debtdrone config set` instead:
+
+```bash
+debtdrone config set scan.max_complexity 12
+debtdrone config set scan.fail_on high
 ```
 
 If a config command reports malformed or incompatible YAML, follow the path in

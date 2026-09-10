@@ -136,7 +136,7 @@ func TestScanCmd_QualityGate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := createRootWithScan()
-			args := []string{"scan", testRepo}
+			args := []string{"scan", testRepo, "--security-scan=false"}
 			if tt.failOn != "" {
 				args = append(args, "--fail-on", tt.failOn)
 			}
@@ -163,7 +163,7 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 
 	t.Run("--format=json", func(t *testing.T) {
 		root := createRootWithScan()
-		output, _, err := executeCommandWithStreams(root, "scan", testRepo, "--format", "json")
+		output, _, err := executeCommandWithStreams(root, "scan", testRepo, "--format", "json", "--security-scan=false")
 
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
@@ -180,7 +180,7 @@ func TestScanCmd_OutputFormats(t *testing.T) {
 
 	t.Run("--format=text", func(t *testing.T) {
 		root := createRootWithScan()
-		output, err := executeCommand(root, "scan", testRepo, "--format", "text")
+		output, err := executeCommand(root, "scan", testRepo, "--format", "text", "--security-scan=false")
 
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
