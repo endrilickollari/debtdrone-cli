@@ -69,9 +69,12 @@ type IsolatedExecutor interface {
 // Options controls coverage collection. Test execution remains separately
 // opt-in because it executes repository code and may create coverage artifacts.
 type Options struct {
-	Artifacts        []Artifact
-	RunLocalTests    bool
-	IsolatedExecutor IsolatedExecutor
+	Artifacts []Artifact
+	// SuppliedArtifactsOnly ignores reports found in the repository and
+	// requires test execution to stay disabled.
+	SuppliedArtifactsOnly bool
+	RunLocalTests         bool
+	IsolatedExecutor      IsolatedExecutor
 }
 
 // Result contains normalized coverage data and recoverable diagnostics.

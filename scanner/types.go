@@ -95,10 +95,12 @@ type CoverageArtifact struct {
 // Coverage is disabled by default. RunLocalTests and IsolatedExecutor are
 // mutually exclusive because both execute code from the scanned repository.
 type CoverageOptions struct {
-	Enabled          bool
-	Artifacts        []CoverageArtifact
-	RunLocalTests    bool
-	IsolatedExecutor coveragecore.IsolatedExecutor
+	Enabled   bool
+	Artifacts []CoverageArtifact
+	// SuppliedArtifactsOnly ignores coverage files in the scanned repository.
+	SuppliedArtifactsOnly bool
+	RunLocalTests         bool
+	IsolatedExecutor      coveragecore.IsolatedExecutor
 }
 
 type Options struct {

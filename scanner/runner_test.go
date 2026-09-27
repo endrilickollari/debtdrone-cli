@@ -174,6 +174,21 @@ func TestScanCoverageIsOptInAndReturnsNeutralResults(t *testing.T) {
 	assert.NotEmpty(t, enabled.Findings[0].Fingerprint)
 }
 
+func TestScanCoverageSuppliedArtifactsOnlySkipsClonedReport(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "package.json", `{"name":"coverage-fixture"}`))
+	require.NoError(t, writeTestFile(root, "src/app.ts", "export const answer = 42;\n"))
+	require.NoError(t, writeTestFile(root, "coverage/lcov.info", "SF:src/app.ts\nDA:1,0\nend_of_record\n"))
+	options := DefaultOptions()
+	options.Coverage = CoverageOptions{Enabled: true, SuppliedArtifactsOnly: true, Artifacts: []CoverageArtifact{{
+		Name: "lcov.info", Content: []byte("SF:src/app.ts\nDA:1,1\nend_of_record\n"),
+	}}}
+
+	report, err := Scan(context.Background(), root, options)
+	require.NoError(t, err)
+	assert.EqualValues(t, 100, metricValue(t, report.Metrics[coverageAnalyzerID], "test_coverage_percentage"))
+}
+
 func TestScanCoveragePassesArtifactRootsForMonorepoNormalization(t *testing.T) {
 	root := t.TempDir()
 	for _, project := range []string{"frontend", "backend"} {
