@@ -62,6 +62,38 @@ func TestUploadedAndGeneratedArtifactsShareNormalization(t *testing.T) {
 	assert.Equal(t, generated.Report, uploaded.Report)
 }
 
+func TestSuppliedArtifactsOnlyIgnoresRepositoryReports(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "coverage"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "coverage", "lcov.info"), []byte("SF:src/app.ts\nDA:1,0\nend_of_record\n"), 0o600))
+	buildRoots := []repostructure.BuildRoot{{Dir: root}}
+
+	missing, err := Analyze(context.Background(), root, buildRoots, Options{SuppliedArtifactsOnly: true})
+	require.NoError(t, err)
+	assert.Nil(t, missing.Report)
+
+	uploaded, err := Analyze(context.Background(), root, buildRoots, Options{
+		SuppliedArtifactsOnly: true,
+		Artifacts:             []Artifact{{Name: "lcov.info", Content: []byte("SF:src/app.ts\nDA:1,1\nend_of_record\n")}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, uploaded.Report)
+	assert.Equal(t, 1, uploaded.Report.Files[0].LinesCovered)
+	assert.Equal(t, 100.0, uploaded.Report.OverallLinePct)
+}
+
+func TestSuppliedArtifactsOnlyRejectsTestExecution(t *testing.T) {
+	root := t.TempDir()
+	for _, options := range []Options{
+		{SuppliedArtifactsOnly: true, RunLocalTests: true},
+		{SuppliedArtifactsOnly: true, IsolatedExecutor: &fakeIsolatedExecutor{}},
+	} {
+		result, err := Analyze(context.Background(), root, nil, options)
+		require.ErrorContains(t, err, "cannot execute tests")
+		assert.Nil(t, result.Report)
+	}
+}
+
 func TestUploadedArtifactsUseExplicitRootsInMonorepositories(t *testing.T) {
 	root := t.TempDir()
 	frontend := filepath.Join(root, "frontend")

@@ -47,6 +47,9 @@ func Analyze(ctx context.Context, repoRoot string, roots []repostructure.BuildRo
 }
 
 func analyzeWithRunner(ctx context.Context, repoRoot string, roots []repostructure.BuildRoot, options Options, runner commandRunner) (Result, error) {
+	if options.SuppliedArtifactsOnly && (options.RunLocalTests || options.IsolatedExecutor != nil) {
+		return Result{}, fmt.Errorf("supplied-artifact-only coverage cannot execute tests")
+	}
 	if options.RunLocalTests && options.IsolatedExecutor != nil {
 		return Result{Warnings: []string{"coverage execution cannot enable both local tests and an isolated executor"}}, fmt.Errorf("coverage execution modes are mutually exclusive")
 	}
@@ -54,8 +57,12 @@ func analyzeWithRunner(ctx context.Context, repoRoot string, roots []repostructu
 	if len(roots) == 0 {
 		roots = []repostructure.BuildRoot{{Dir: repoRoot}}
 	}
-	candidates, warnings := discoverCandidates(ctx, roots, parsers)
-	if len(candidates) == 0 {
+	var candidates []candidate
+	var warnings []string
+	if !options.SuppliedArtifactsOnly {
+		candidates, warnings = discoverCandidates(ctx, roots, parsers)
+	}
+	if options.SuppliedArtifactsOnly || len(candidates) == 0 {
 		candidates, warnings = appendArtifactCandidates(repoRoot, roots, parsers, candidates, warnings, options.Artifacts)
 	}
 	if len(candidates) == 0 && options.IsolatedExecutor != nil {
