@@ -51,7 +51,7 @@ func (a *SwiftAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.C
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 		debtMinutes := estimateSwiftTechnicalDebt(cyclomatic, cognitive, loc)
 		suggestions := generateSwiftRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.paramCount, loc)
 

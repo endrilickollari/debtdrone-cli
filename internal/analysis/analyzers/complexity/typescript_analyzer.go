@@ -51,7 +51,7 @@ func (a *TypeScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 		nodes := mapTypeScriptNodes(fn.node, content)
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 		cognitivePtr := cognitive
 		snippetStr := truncateSnippet(fn.body, 10000)
 

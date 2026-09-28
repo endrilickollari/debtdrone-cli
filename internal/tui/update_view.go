@@ -252,7 +252,7 @@ func (m *UpdateModel) render() string {
 
 	modal := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccentBlue).
+		BorderForeground(colorBorder).
 		Padding(1, 3).
 		Width(modalWidth).
 		Background(colorBg).

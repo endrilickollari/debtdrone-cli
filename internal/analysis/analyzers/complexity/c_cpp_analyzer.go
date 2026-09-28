@@ -45,7 +45,7 @@ func (a *CCppAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.BodyContent, "\n") + 1
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 		debtMinutes := estimateCCppTechnicalDebt(cyclomatic, cognitive, loc)
 		suggestions := generateCCppRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.ParamCount, loc)
 

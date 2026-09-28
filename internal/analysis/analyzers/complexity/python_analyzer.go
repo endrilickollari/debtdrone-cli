@@ -44,7 +44,7 @@ func (a *PythonAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 		nodes := mapPythonNodes(fn.Node)
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 
 		cognitivePtr := cognitive
 		// AI fixes need more context than issue previews.

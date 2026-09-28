@@ -63,10 +63,10 @@ func configItems(values localconfig.Values) []configItem {
 		{
 			Category:    "Quality Gate",
 			ConfigKey:   localconfig.KeyMaxComplexity,
-			Key:         "Max Complexity",
+			Key:         "Max Cyclomatic",
 			Value:       localconfig.Value(values, localconfig.KeyMaxComplexity),
 			Type:        "int",
-			Description: "Cyclomatic-complexity threshold per function",
+			Description: "Cyclomatic only; cognitive limits are fixed",
 		},
 		{
 			Category:    "Quality Gate",
@@ -314,43 +314,43 @@ func (m *ConfigModel) render() string {
 	descW := innerWidth - markerW - keyW - valW - (gap * 2)
 	showDescription := descW >= minimumDescW
 
-	titleStyle := lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true)
+	titleStyle := lipgloss.NewStyle().Foreground(colorText).Bold(true)
 
-	categoryStyle := lipgloss.NewStyle().Foreground(colorDim).Bold(true)
+	categoryStyle := lipgloss.NewStyle().Foreground(colorFilePath).Bold(true)
 
-	keyNormalStyle := lipgloss.NewStyle().Foreground(colorDim).Width(keyW)
+	// Each segment of the focused row carries the selection background itself.
+	// A style that only wrapped the finished row would be cancelled by the
+	// reset sequence every inner style emits, leaving gaps in the highlight.
+	cell := func(colour lipgloss.Color, selected bool) lipgloss.Style {
+		style := lipgloss.NewStyle().Foreground(colour)
+		if selected {
+			style = style.Background(colorSelectedBg)
+		}
+		return style
+	}
 
-	keySelectedStyle := lipgloss.NewStyle().
-		Foreground(colorAccentBlue).Bold(true).Width(keyW)
-
-	descStyle := lipgloss.NewStyle().Foreground(colorDim).Width(descW)
-
-	valueBadge := func(item configItem, idx int) string {
-		displayVal := item.Value
+	renderValue := func(item configItem, idx int) string {
+		// The focused value is framed by "← [ " and " ] →", so the text gets
+		// what is left of the column once both frames are reserved.
+		const frameW = 8
+		inner := truncate(item.Value, valW-frameW)
 		if m.mode == configEditing && idx == m.cursor {
-			displayVal = m.editBuffer + "█"
-		}
-		inner := truncate(displayVal, valW-4)
-
-		var bracketColor lipgloss.Color
-		switch {
-		case item.Type == "bool" && item.Value == "true":
-			bracketColor = colorOK
-		case item.Type == "bool":
-			bracketColor = colorDim
-		default:
-			bracketColor = colorAccentBlue
+			// Trimmed from the left so the cursor stays in view while typing.
+			inner = truncateLeft(m.editBuffer+"█", valW-frameW)
 		}
 
-		var content string
+		content := "    " + inner
 		if item.IsOption && idx == m.cursor {
 			content = "← [ " + inner + " ] →"
-		} else {
+		} else if idx == m.cursor {
 			content = "  [ " + inner + " ]  "
 		}
-		return lipgloss.NewStyle().
-			Foreground(bracketColor).
-			Width(valW + 4).
+		valueColor := colorFilePath
+		if idx == m.cursor {
+			valueColor = colorAccentBlue
+		}
+		return cell(valueColor, idx == m.cursor).
+			Width(valW).
 			Render(content)
 	}
 
@@ -375,35 +375,34 @@ func (m *ConfigModel) render() string {
 			}
 			lastCategory = item.Category
 
-			divPad := innerWidth - len(item.Category) - 6
-			divider := "──── " +
-				categoryStyle.Render(item.Category) +
-				lipgloss.NewStyle().Foreground(colorDim).
-					Render(" "+strings.Repeat("─", max(divPad, 2)))
-			b.WriteString(divider)
+			b.WriteString(categoryStyle.Render(item.Category))
 			b.WriteString("\n")
 		}
 
-		var keyRendered string
-		if i == m.cursor {
-			keyRendered = keySelectedStyle.Render(item.Key)
-		} else {
-			keyRendered = keyNormalStyle.Render(item.Key)
+		selected := i == m.cursor
+		keyRendered := cell(colorDim, false).Width(keyW).Render(item.Key)
+		if selected {
+			keyRendered = cell(colorAccentBlue, true).Bold(true).Width(keyW).Render(item.Key)
 		}
 
 		marker := "  "
-		if i == m.cursor {
+		if selected {
 			marker = "› "
 		}
-		row := marker + keyRendered + strings.Repeat(" ", gap)
+		spacer := strings.Repeat(" ", gap)
+		if selected {
+			marker = cell(colorAccentBlue, true).Render(marker)
+			spacer = cell(colorText, true).Render(spacer)
+		}
+		row := marker + keyRendered + spacer
 		if showDescription {
 			// Truncated rather than wrapped: a description that spills onto a
 			// second line turns every setting into a two-row entry.
-			row += descStyle.Render(truncate(item.Description, descW)) + strings.Repeat(" ", gap)
+			row += cell(colorDim, selected).Width(descW).Render(truncate(item.Description, descW)) + spacer
 		}
-		row += valueBadge(item, i)
+		row += renderValue(item, i)
 
-		if i == m.cursor {
+		if selected {
 			// Recorded so the scrolling window below can keep the focused row
 			// on screen.
 			cursorLine = strings.Count(b.String(), "\n")
@@ -415,7 +414,7 @@ func (m *ConfigModel) render() string {
 	}
 
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim)
-	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3f58")).Render("  ·  ")
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render("  ·  ")
 	k := func(s string) string { return lipgloss.NewStyle().Foreground(colorText).Render(s) }
 
 	var hints string
@@ -460,7 +459,7 @@ func (m *ConfigModel) render() string {
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccentBlue).
+		BorderForeground(colorBorder).
 		Padding(1, 3).
 		Width(boxWidth).
 		Background(colorBg).

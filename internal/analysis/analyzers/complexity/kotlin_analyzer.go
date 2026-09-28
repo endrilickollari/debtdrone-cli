@@ -51,7 +51,7 @@ func (a *KotlinAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 		debtMinutes := estimateKotlinTechnicalDebt(cyclomatic, cognitive, loc)
 		suggestions := generateKotlinRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.paramCount, loc)
 

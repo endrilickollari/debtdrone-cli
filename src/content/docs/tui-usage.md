@@ -295,7 +295,7 @@ Edits become session overrides for scans started in the current TUI.
 | **General** | Output Format | `text` or `json` for TUI result presentation |
 | **General** | Auto-Update Checks | The resolved launch value controls the automatic startup check; changing it after launch does not rerun the check |
 | **Quality Gate** | Fail on Severity | Shared value for headless quality gates; TUI scans do not return process-level quality-gate failures |
-| **Quality Gate** | Max Complexity | High cyclomatic complexity threshold per function; critical starts above twice the value (default: `15`) |
+| **Quality Gate** | Max Cyclomatic | High cyclomatic complexity threshold per function; critical starts above twice the value (default: `15`). Cognitive complexity and nesting limits are fixed and can still report a function below this value |
 | **Quality Gate** | Security Scan | Run Trivy vulnerability and secret detection |
 | **Quality Gate** | Coverage | Parse existing coverage artifacts without running repository tests |
 | **Display** | Show Line Numbers | Include or hide line and column information in rendered results |
