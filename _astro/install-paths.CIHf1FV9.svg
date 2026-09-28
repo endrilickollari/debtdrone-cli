@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
+  <title id="title">DebtDrone CLI installation paths</title>
+  <desc id="desc">Go install, release archive, Homebrew, and source build paths converge on version verification and a first local scan.</desc>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#f7f6f8" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c5f542"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="428" rx="16" fill="#0c0b0e" stroke="#302f34"/>
+  <rect x="1" y="1" width="958" height="428" rx="16" fill="url(#grid)"/>
+  <text x="48" y="48" fill="#c5f542" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="2">INSTALL / CHOOSE A PATH</text>
+  <text x="912" y="48" fill="#6b6870" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" text-anchor="end">LOCAL · NO ACCOUNT</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <g transform="translate(48 82)">
+      <rect width="198" height="116" rx="9" fill="#111013" stroke="#35343a"/>
+      <rect x="16" y="16" width="78" height="22" rx="4" fill="#c5f542" fill-opacity="0.12"/>
+      <text x="55" y="31" fill="#c5f542" font-size="10" font-weight="700" text-anchor="middle">GO TOOLCHAIN</text>
+      <text x="16" y="67" fill="#f7f6f8" font-size="14" font-weight="700">go install</text>
+      <text x="16" y="91" fill="#99969f" font-size="11">Go 1.25.1 + C compiler</text>
+    </g>
+    <g transform="translate(270 82)">
+      <rect width="198" height="116" rx="9" fill="#111013" stroke="#35343a"/>
+      <rect x="16" y="16" width="76" height="22" rx="4" fill="#c5f542" fill-opacity="0.12"/>
+      <text x="54" y="31" fill="#c5f542" font-size="10" font-weight="700" text-anchor="middle">RELEASES</text>
+      <text x="16" y="67" fill="#f7f6f8" font-size="14" font-weight="700">download archive</text>
+      <text x="16" y="91" fill="#99969f" font-size="11">macOS · Linux · Windows</text>
+    </g>
+    <g transform="translate(492 82)">
+      <rect width="198" height="116" rx="9" fill="#111013" stroke="#35343a"/>
+      <rect x="16" y="16" width="78" height="22" rx="4" fill="#c5f542" fill-opacity="0.12"/>
+      <text x="55" y="31" fill="#c5f542" font-size="10" font-weight="700" text-anchor="middle">HOMEBREW</text>
+      <text x="16" y="67" fill="#f7f6f8" font-size="14" font-weight="700">brew install</text>
+      <text x="16" y="91" fill="#99969f" font-size="11">managed upgrades</text>
+    </g>
+    <g transform="translate(714 82)">
+      <rect width="198" height="116" rx="9" fill="#111013" stroke="#35343a"/>
+      <rect x="16" y="16" width="98" height="22" rx="4" fill="#c5f542" fill-opacity="0.12"/>
+      <text x="65" y="31" fill="#c5f542" font-size="10" font-weight="700" text-anchor="middle">SOURCE BUILD</text>
+      <text x="16" y="67" fill="#f7f6f8" font-size="14" font-weight="700">go build</text>
+      <text x="16" y="91" fill="#99969f" font-size="11">clone + native compiler</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#c5f542" stroke-opacity="0.55" stroke-width="1.5">
+    <path d="M147 198 V232 H480 V266"/>
+    <path d="M369 198 V232"/>
+    <path d="M591 198 V232"/>
+    <path d="M813 198 V232 H480"/>
+  </g>
+  <circle cx="480" cy="232" r="4" fill="#c5f542"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <rect x="310" y="266" width="340" height="56" rx="8" fill="#171619" stroke="#c5f542" stroke-opacity="0.6"/>
+    <text x="334" y="288" fill="#99969f" font-size="10" letter-spacing="1.5">VERIFY</text>
+    <text x="334" y="308" fill="#f7f6f8" font-size="14" font-weight="700">$ debtdrone --version</text>
+    <path d="M480 322 V354" fill="none" stroke="#c5f542" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <rect x="310" y="362" width="340" height="44" rx="8" fill="#c5f542"/>
+    <text x="480" y="389" fill="#13210c" font-size="13" font-weight="800" text-anchor="middle">RUN YOUR FIRST LOCAL SCAN →</text>
+  </g>
+</svg>

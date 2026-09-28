@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" role="img" aria-labelledby="title desc">
+  <title id="title">DebtDrone scan lifecycle</title>
+  <desc id="desc">A selected repository passes through file policy, complexity and line-count analysis, and optional coverage and security analysis into a deterministic report consumed by the TUI, JSON output, or a CI quality gate.</desc>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#f7f6f8" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c5f542"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="458" rx="16" fill="#0c0b0e" stroke="#302f34"/>
+  <rect x="1" y="1" width="958" height="458" rx="16" fill="url(#grid)"/>
+  <text x="48" y="48" fill="#c5f542" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="2">SCAN / ONE ENGINE, THREE OUTPUTS</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <g transform="translate(48 168)">
+      <rect width="150" height="94" rx="9" fill="#111013" stroke="#35343a"/>
+      <text x="18" y="27" fill="#99969f" font-size="10" letter-spacing="1.4">TARGET</text>
+      <text x="18" y="55" fill="#f7f6f8" font-size="14" font-weight="700">repository</text>
+      <text x="18" y="76" fill="#99969f" font-size="11">explicit local path</text>
+    </g>
+    <g transform="translate(246 168)">
+      <rect width="150" height="94" rx="9" fill="#111013" stroke="#35343a"/>
+      <text x="18" y="27" fill="#99969f" font-size="10" letter-spacing="1.4">POLICY</text>
+      <text x="18" y="55" fill="#f7f6f8" font-size="14" font-weight="700">safe file set</text>
+      <text x="18" y="76" fill="#99969f" font-size="11">scope + exclusions</text>
+    </g>
+
+    <g transform="translate(444 78)">
+      <rect width="170" height="48" rx="8" fill="#171619" stroke="#c5f542" stroke-opacity="0.35"/>
+      <circle cx="20" cy="24" r="4" fill="#c5f542"/>
+      <text x="36" y="29" fill="#f7f6f8" font-size="12" font-weight="700">complexity</text>
+    </g>
+    <g transform="translate(444 158)">
+      <rect width="170" height="48" rx="8" fill="#171619" stroke="#c5f542" stroke-opacity="0.35"/>
+      <circle cx="20" cy="24" r="4" fill="#c5f542"/>
+      <text x="36" y="29" fill="#f7f6f8" font-size="12" font-weight="700">line count</text>
+    </g>
+    <g transform="translate(444 238)">
+      <rect width="170" height="48" rx="8" fill="#171619" stroke="#c5f542" stroke-opacity="0.35"/>
+      <circle cx="20" cy="24" r="4" fill="#c5f542"/>
+      <text x="36" y="29" fill="#f7f6f8" font-size="12" font-weight="700">coverage · opt-in</text>
+    </g>
+    <g transform="translate(444 318)">
+      <rect width="170" height="48" rx="8" fill="#171619" stroke="#c5f542" stroke-opacity="0.35"/>
+      <circle cx="20" cy="24" r="4" fill="#c5f542"/>
+      <text x="36" y="29" fill="#f7f6f8" font-size="12" font-weight="700">Trivy · optional</text>
+    </g>
+    <text x="529" y="68" fill="#99969f" font-size="10" letter-spacing="1.4" text-anchor="middle">ANALYZERS</text>
+
+    <g transform="translate(662 168)">
+      <rect width="150" height="94" rx="9" fill="#111013" stroke="#c5f542" stroke-opacity="0.6"/>
+      <text x="18" y="27" fill="#99969f" font-size="10" letter-spacing="1.4">REPORT</text>
+      <text x="18" y="55" fill="#f7f6f8" font-size="14" font-weight="700">ordered findings</text>
+      <text x="18" y="76" fill="#99969f" font-size="11">neutral contract</text>
+    </g>
+
+    <g transform="translate(852 80)">
+      <rect width="78" height="58" rx="8" fill="#c5f542" fill-opacity="0.12" stroke="#c5f542" stroke-opacity="0.45"/>
+      <text x="39" y="34" fill="#c5f542" font-size="12" font-weight="700" text-anchor="middle">TUI</text>
+    </g>
+    <g transform="translate(852 186)">
+      <rect width="78" height="58" rx="8" fill="#c5f542" fill-opacity="0.12" stroke="#c5f542" stroke-opacity="0.45"/>
+      <text x="39" y="34" fill="#c5f542" font-size="12" font-weight="700" text-anchor="middle">JSON</text>
+    </g>
+    <g transform="translate(852 292)">
+      <rect width="78" height="58" rx="8" fill="#c5f542" fill-opacity="0.12" stroke="#c5f542" stroke-opacity="0.45"/>
+      <text x="39" y="27" fill="#c5f542" font-size="11" font-weight="700" text-anchor="middle">CI</text>
+      <text x="39" y="42" fill="#c5f542" font-size="9" text-anchor="middle">GATE</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#c5f542" stroke-width="1.5" marker-end="url(#arrow)">
+    <path d="M198 215 H238"/>
+    <path d="M396 215 H424 V102 H436"/>
+    <path d="M396 215 H424 V182 H436"/>
+    <path d="M396 215 H424 V262 H436"/>
+    <path d="M396 215 H424 V342 H436"/>
+    <path d="M614 102 H634 V215 H654"/>
+    <path d="M614 182 H634 V215 H654"/>
+    <path d="M614 262 H634 V215 H654"/>
+    <path d="M614 342 H634 V215 H654"/>
+    <path d="M812 215 H832 V109 H844"/>
+    <path d="M812 215 H844"/>
+    <path d="M812 215 H832 V321 H844"/>
+  </g>
+
+  <text x="48" y="412" fill="#6b6870" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">STATIC ANALYSIS · NO SAAS ACCOUNT · WARNINGS STAY ON STDERR</text>
+</svg>
