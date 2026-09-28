@@ -697,7 +697,7 @@ func (m *MenuModel) renderActions(width int) string {
 // terminal, where the two stacked panels need every row they can get.
 func panelStyle(terminalWidth, width int) lipgloss.Style {
 	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccentBlue).Width(width)
+		BorderForeground(colorBorder).Width(width)
 	if layoutFor(terminalWidth, 0).compact() {
 		return style.Padding(0, 1)
 	}
@@ -830,7 +830,7 @@ func (m *MenuModel) renderCommandPalette() string {
 	sections = append(sections, "", dimStyle.Render(truncate(
 		"tab/↑↓ choose   → accept   enter run   esc back", innerWidth)))
 	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).
 		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
@@ -890,7 +890,7 @@ func (m *MenuModel) renderRecentDetail() string {
 	footer := lipgloss.NewStyle().Foreground(colorDim).Render(truncate(
 		"j/k scroll   s scan   h history   esc/enter dashboard", innerWidth))
 	body := lipgloss.JoinVertical(lipgloss.Left, strings.Join(visible, "\n"), footer)
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).
 		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
@@ -908,7 +908,7 @@ func (m *MenuModel) renderHelp() string {
 	footer := lipgloss.NewStyle().Foreground(colorDim).Render(truncate(footerText, innerWidth))
 	body := lipgloss.JoinVertical(lipgloss.Left, strings.Join(visible, "\n"), footer)
 
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccentBlue).
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).
 		Padding(1, 2).Width(boxWidth).Background(colorBg).Render(body)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }

@@ -51,7 +51,7 @@ func (a *RustAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 		debtMinutes := estimateRustTechnicalDebt(cyclomatic, cognitive, loc)
 		suggestions := generateRustRefactoringSuggestions(cyclomatic, cognitive, nesting, fn.paramCount, loc)
 

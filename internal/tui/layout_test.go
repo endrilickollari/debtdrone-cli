@@ -88,10 +88,69 @@ func TestFocusHighlightSurvivesTheStylingInsideARow(t *testing.T) {
 	// Every styled segment must re-assert the highlight. A single background
 	// wrapped around the finished row would be cancelled by the first inner
 	// reset, leaving the highlight on the padding alone.
-	background := "48;2;30;42;64"
+	background := "48;2;38;52;79"
 	segments := strings.Count(selectedRow, "\x1b[0m")
 	assert.GreaterOrEqual(t, strings.Count(selectedRow, background), segments-1,
 		"the selection highlight is dropped partway across the row")
+}
+
+func TestSettingsFocusHighlightSurvivesTheStylingInsideARow(t *testing.T) {
+	withColorProfile(t, termenv.TrueColor)
+
+	selectedRow := ""
+	for _, line := range strings.Split(configScreen(t, wideWidth, wideHeight).render(), "\n") {
+		if strings.Contains(line, "› ") {
+			selectedRow = line
+		}
+	}
+	require.NotEmpty(t, selectedRow)
+
+	// The editor's border and padding share the line, so only the span from
+	// the first highlighted segment to the last must be unbroken.
+	background := "48;2;38;52;79"
+	segments := strings.Split(selectedRow, "\x1b[0m")
+	first, last := -1, -1
+	for i, segment := range segments {
+		if strings.Contains(segment, background) {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	require.GreaterOrEqual(t, first, 0, "the focused setting is highlighted")
+	for _, segment := range segments[first : last+1] {
+		assert.Contains(t, segment, background,
+			"the settings highlight is dropped partway across the row")
+	}
+	assert.Contains(t, strings.Join(segments[first:last+1], ""), "[ text ]",
+		"the highlight reaches the value column")
+}
+
+func TestSettingsRowStaysOnOneLineWithALongValue(t *testing.T) {
+	withColorProfile(t, termenv.Ascii)
+
+	long := strings.Repeat("9", 40)
+	for _, mode := range []configMode{configNavigating, configEditing} {
+		config := configScreen(t, wideWidth, wideHeight)
+		config.items[config.cursor].Value = long
+		config.mode, config.editBuffer = mode, long
+
+		var focused []string
+		lines := strings.Split(config.render(), "\n")
+		for i, line := range lines {
+			if strings.Contains(line, "› ") {
+				focused = append(focused, line, lines[i+1])
+			}
+		}
+		require.Len(t, focused, 2)
+		assert.Contains(t, focused[0], "]", "the closing frame stays on the focused row")
+		assert.Contains(t, focused[1], config.items[config.cursor+1].Key,
+			"the next setting follows directly, so the focused row did not wrap")
+		if mode == configEditing {
+			assert.Contains(t, focused[0], "█", "the cursor stays visible while typing")
+		}
+	}
 }
 
 func TestDashboardRecentRowsMarkFocusWithoutColour(t *testing.T) {
@@ -371,7 +430,7 @@ func TestReducedMotionReplacesTheSpinnerWhenColourIsUnavailable(t *testing.T) {
 	for _, frame := range spinnerChars {
 		assert.NotContains(t, still, frame, "an unstyled terminal shows no animated frame")
 	}
-	assert.Contains(t, still, "Analyzing Repository")
+	assert.Contains(t, still, "Analyzing repository")
 	assert.Contains(t, still, "2/5 analyzers", "progress is still reported")
 
 	withColorProfile(t, termenv.TrueColor)

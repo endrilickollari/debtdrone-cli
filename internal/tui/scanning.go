@@ -668,8 +668,8 @@ func (m *ScanModel) render() string {
 }
 
 func (m *ScanModel) renderScanning() string {
-	boxWidth := min(max(m.width-2, 24), 80)
-	innerWidth := max(boxWidth-8, 1) // four cells of padding per side
+	contentWidth := min(max(m.width-4, 24), 72)
+	innerWidth := max(contentWidth-4, 1)
 	// A terminal without colour is generally a dumb terminal or a captured log,
 	// where an animated frame is noise rather than feedback. The elapsed timer
 	// and analyzer count still show that the scan is progressing.
@@ -677,10 +677,10 @@ func (m *ScanModel) renderScanning() string {
 	if reducedMotion() {
 		spinner = "*"
 	}
-	accentBlue := lipgloss.Color("#4fc3f7")
-	dimColor := lipgloss.Color("#4a5068")
-	pathColor := lipgloss.Color("#8899bb")
-	progressColor := lipgloss.Color("#5af78e")
+	accentBlue := colorAccentBlue
+	dimColor := colorDim
+	pathColor := colorFilePath
+	progressColor := colorOK
 
 	stage := m.stage
 	if stage == "" {
@@ -688,12 +688,13 @@ func (m *ScanModel) renderScanning() string {
 	}
 
 	rows := []string{
-		lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render(spinner + " Analyzing Repository…"),
+		lipgloss.NewStyle().Foreground(accentBlue).Render(spinner+" ") +
+			lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Analyzing repository…"),
 		"",
 		lipgloss.NewStyle().Foreground(dimColor).Render("Stage    ") +
 			lipgloss.NewStyle().Foreground(colorText).Render(stage),
 		lipgloss.NewStyle().Foreground(dimColor).Render("Path     ") +
-			lipgloss.NewStyle().Foreground(pathColor).Render(truncate(m.scanPath, max(innerWidth-9, 1))),
+			lipgloss.NewStyle().Foreground(pathColor).Render(truncateLeft(m.scanPath, max(innerWidth-9, 1))),
 		lipgloss.NewStyle().Foreground(dimColor).Render("Elapsed  ") +
 			lipgloss.NewStyle().Foreground(colorText).Render(formatElapsed(m.elapsed)),
 	}
@@ -706,17 +707,14 @@ func (m *ScanModel) renderScanning() string {
 		barWidth := min(40, max(innerWidth-lipgloss.Width(progressLabel), 1))
 		filled := clamp(m.completedAnalyzers*barWidth/m.totalAnalyzers, 0, barWidth)
 		bar := lipgloss.NewStyle().Foreground(progressColor).Render(strings.Repeat("█", filled)) +
-			lipgloss.NewStyle().Foreground(dimColor).Render(strings.Repeat("░", barWidth-filled))
+			lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("░", barWidth-filled))
 		rows = append(rows, "", bar+lipgloss.NewStyle().Foreground(colorText).Bold(true).
 			Render(progressLabel))
 	}
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(accentBlue).
-		Padding(1, 4).
-		Width(boxWidth).
-		Background(lipgloss.Color("#1e2035")).
+	content := lipgloss.NewStyle().
+		Padding(1, 2).
+		Width(contentWidth).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
 	hintText := "esc  cancel and return to the dashboard        ctrl+c  quit"
@@ -724,7 +722,7 @@ func (m *ScanModel) renderScanning() string {
 		hintText = "esc  cancel/back    ctrl+c  quit"
 	}
 	hint := lipgloss.NewStyle().Foreground(dimColor).Render(hintText)
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n\n"+hint)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content+"\n\n"+hint)
 }
 
 // formatElapsed renders a running duration at whole-second resolution, which is
@@ -884,7 +882,7 @@ func (m *ScanModel) renderTextResults() string {
 	innerW := max(m.width-len(divTitle)-4, 0)
 	leftW := innerW / 2
 	rightW := innerW - leftW
-	divider := lipgloss.NewStyle().Foreground(colorAccentBlue).Render(
+	divider := lipgloss.NewStyle().Foreground(colorBorder).Render(
 		strings.Repeat("─", leftW) +
 			lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Render(divTitle) +
 			strings.Repeat("─", rightW),
@@ -892,7 +890,7 @@ func (m *ScanModel) renderTextResults() string {
 
 	detailPane := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccentBlue).
+		BorderForeground(colorBorder).
 		Width(m.width - 2).
 		Render(m.detail.view())
 
@@ -907,7 +905,7 @@ func (m *ScanModel) renderJSONResults() string {
 	innerW := max(m.width-len(divTitle)-4, 0)
 	leftW := innerW / 2
 	rightW := innerW - leftW
-	divider := lipgloss.NewStyle().Foreground(colorAccentBlue).Render(
+	divider := lipgloss.NewStyle().Foreground(colorBorder).Render(
 		strings.Repeat("─", leftW) +
 			lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Render(divTitle) +
 			strings.Repeat("─", rightW),
@@ -915,7 +913,7 @@ func (m *ScanModel) renderJSONResults() string {
 
 	detailPane := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccentBlue).
+		BorderForeground(colorBorder).
 		Width(m.width - 2).
 		Render(m.detail.view())
 

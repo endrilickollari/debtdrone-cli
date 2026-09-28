@@ -46,7 +46,7 @@ func (a *CSharpAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.BodyContent, "\n") + 1
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 
 		cognitivePtr := cognitive
 		snippetStr := truncateSnippet(fn.BodyContent, 10000)

@@ -127,7 +127,7 @@ func (m *HistoryModel) render() string {
 	innerW := max(m.width-len(divTitle)-4, 0)
 	leftW := innerW / 2
 	rightW := innerW - leftW
-	divider := lipgloss.NewStyle().Foreground(colorAccentBlue).Render(
+	divider := lipgloss.NewStyle().Foreground(colorBorder).Render(
 		strings.Repeat("─", leftW) +
 			lipgloss.NewStyle().Foreground(colorAccentBlue).Bold(true).Render(divTitle) +
 			strings.Repeat("─", rightW),
@@ -135,7 +135,7 @@ func (m *HistoryModel) render() string {
 
 	detailPane := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccentBlue).
+		BorderForeground(colorBorder).
 		Width(m.width - 2).
 		Render(m.detail.view())
 

@@ -3,6 +3,7 @@ package complexity
 import (
 	"strings"
 
+	"github.com/endrilickollari/debtdrone-cli/v2/internal/models"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -54,12 +55,12 @@ func WalkTree(node *sitter.Node, visitor func(*sitter.Node)) {
 	}
 }
 
-func classifyComplexitySeverity(cyclomatic, cognitive, nesting int) string {
-	if cyclomatic > 20 || cognitive > 25 || nesting > 5 {
+func classifyComplexitySeverity(cyclomatic, cognitive, nesting int, thresholds models.ComplexityThresholds) string {
+	if cyclomatic > thresholds.CyclomaticCritical || cognitive > 25 || nesting > 5 {
 		return "critical"
-	} else if cyclomatic > 15 || cognitive > 20 || nesting > 4 {
+	} else if cyclomatic > thresholds.CyclomaticHigh || cognitive > 20 || nesting > 4 {
 		return "high"
-	} else if cyclomatic > 10 || cognitive > 15 || nesting > 3 {
+	} else if cyclomatic > thresholds.CyclomaticHigh*2/3 || cognitive > 15 || nesting > 3 {
 		return "medium"
 	}
 	return "low"

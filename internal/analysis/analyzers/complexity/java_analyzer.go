@@ -49,7 +49,7 @@ func (a *JavaAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 		nodes := mapJavaNodes(fn.node, content)
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 
 		cognitivePtr := cognitive
 		snippetStr := truncateSnippet(fn.body, 10000)

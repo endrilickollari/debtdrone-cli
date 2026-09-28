@@ -51,7 +51,7 @@ func (a *PHPAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Com
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 		loc := strings.Count(fn.body, "\n") + 1
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 
 		cognitivePtr := cognitive
 		snippetStr := truncateSnippet(fn.body, 10000)

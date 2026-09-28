@@ -42,7 +42,7 @@ func (a *JavaScriptAnalyzer) AnalyzeFile(filePath string, content []byte) ([]mod
 		nodes := mapJavaScriptNodes(fn.Node, content)
 		cyclomatic, cognitive, nesting := CalculateComplexity(nodes)
 
-		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting)
+		severity := classifyComplexitySeverity(cyclomatic, cognitive, nesting, a.thresholds)
 
 		cognitivePtr := cognitive
 		snippetStr := truncateSnippet(fn.body, 10000)
