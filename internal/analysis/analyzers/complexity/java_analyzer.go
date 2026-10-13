@@ -54,12 +54,16 @@ func (a *JavaAnalyzer) AnalyzeFile(filePath string, content []byte) ([]models.Co
 		cognitivePtr := cognitive
 		snippetStr := truncateSnippet(fn.body, 10000)
 
+		// The physical line span of the definition, as the Go analyzer counts it.
+		loc := fn.endLine - fn.line + 1
+
 		metric := models.ComplexityMetric{
 			ID:                   uuid.New(),
 			FilePath:             filePath,
 			FunctionName:         fn.name,
 			StartLine:            fn.line,
 			EndLine:              fn.endLine,
+			LinesOfCode:          loc,
 			CyclomaticComplexity: cyclomatic,
 			CognitiveComplexity:  &cognitivePtr,
 			NestingDepth:         nesting,
