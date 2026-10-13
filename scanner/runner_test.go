@@ -438,6 +438,38 @@ func work(input int) int {
 	assert.NotContains(t, string(encoded), "analysis_run_id")
 }
 
+// The public record keeps the line count the analyzer computed, for Python
+// as for Go (END-175: Python functions reported 0).
+func TestScanComplexityRecordsKeepPythonLinesOfCode(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, writeTestFile(root, "app/service.py", `import os
+
+
+async def run_question(question, history):
+    if not question:
+        return None
+    for turn in history:
+        if turn.answer:
+            continue
+    return question
+`))
+
+	report, err := Scan(context.Background(), root, Options{Complexity: ComplexityOptions{Enabled: true}})
+	require.NoError(t, err)
+	records, ok := metricValue(t, report.Metrics["complexity_analyzer"], "complexity_records").([]ComplexityRecord)
+	require.True(t, ok)
+	require.Len(t, records, 1)
+	assert.Equal(t, "/app/service.py", records[0].Path)
+	assert.Equal(t, "run_question", records[0].FunctionName)
+	assert.Equal(t, 4, records[0].StartLine)
+	assert.Equal(t, 10, records[0].EndLine)
+	assert.Equal(t, 7, records[0].LinesOfCode)
+
+	encoded, err := json.Marshal(records[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"lines_of_code":7`)
+}
+
 func TestFullScanDoesNotFollowSymlinks(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, writeTestFile(root, "main.go", "package main\n"))
